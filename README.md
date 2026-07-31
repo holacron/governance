@@ -11,9 +11,9 @@ marketing/docs site ([`../kimberim-site`](../kimberim-site)).
 
 🟢 **Sprint 0 — Foundations & spike** (not yet started).
 
-The full strategy, architecture, roles, protocol, and sprint breakdown live in
-**[`../kimberim-site/docs/ROADMAP.md`](../kimberim-site/docs/ROADMAP.md)**. Read
-that first — this repo implements it.
+The full strategy, governance model, architecture, roles, protocol, and sprint
+breakdown live in **[`./docs/ROADMAP.md`](./docs/ROADMAP.md)**. Read that first —
+this repo implements it.
 
 ## What lives here (target)
 
