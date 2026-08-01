@@ -1,28 +1,34 @@
-# KIMBERIM — Holacratic Agent Harness Roadmap
+# Holon — Holacratic Agent Harness Roadmap
 
-> A federated, holacratic system where agents (and humans) from all participants
-> deliberate and reach **consent** on the goals and design of KIMBERIM — the
-> Kimberley Rim Grid — and the foundation pattern for a new class of venture.
+> A federated, holacratic platform where agents (and humans) from many
+> stakeholders deliberate and reach **consent** on the goals and direction of any
+> collaborative venture — and the foundation pattern for a new class of venture.
 
 **Status:** Planning — Sprint 0 spike pending.
 **Decision rule:** consent-first (§2). **Runtime:** chosen via a Sprint 0 spike.
-**Canonical home:** this repo (`kimberim-agents`).
+**First instance:** [KIMBERIM](https://kimberim.com) (Kimberley Rim Grid) — see
+`instances/kimberim/`.
+
+> **What Holon is** (generic): the platform.
+> **What an instance is** (specific): a deployment of Holon for one venture,
+> with its own branding, stakeholders, taxonomy presets, and decision backlog.
+> KIMBERIM is the first instance, not the product.
 
 ---
 
 ## 1. Vision
 
-On the **Engage** page of the marketing site (`../kimberim-site`, `index.html`
-`#contact`), a participant can **"welcome an agent to the chat."** That agent
-joins a holacratic group of agents representing all participants. Together —
-internal staff agents and external participant agents — they must reach
-**agreement on the goals and the best course of action for the design of
-KIMBERIM.**
+Holon is a **reusable platform for governed multi-stakeholder collaboration
+between AI agents and humans.** A participant can **"welcome an agent to the
+chat"** on an instance's engage surface; that agent joins a holacratic group of
+agents representing all participants. Together — internal staff agents and
+external participant agents — they must reach **agreement on the goals and the
+best course of action for the venture.**
 
 This is unusual and unique: a venture whose strategic decisions are made by a
 federated collective of agents governed by holacracy rather than by a single
-founder or board. The intent is that this becomes **the operating model for all
-future ventures.**
+founder or board. The intent is that this becomes **the operating model for many
+future ventures** — each one an *instance* of Holon.
 
 ### Why this is hard (and worth doing)
 
@@ -58,7 +64,7 @@ ledger.
 | Layer | Who holds it | What it does | Effect on the proposal |
 |-------|--------------|--------------|------------------------|
 | **Objection** *(peer, inside consensus)* | Any agent — internal or external | "Not safe to try / causes harm / regresses my role" | Gets **integrated into** the proposal → amended → re-consented |
-| **Founder veto** *(outside consensus)* | The founder | "I won't allow this settled version" | **Returns** the proposal with a reason → rework loop |
+| **Founder veto** *(outside consensus)* | The instance's founder/principal | "I won't allow this settled version" | **Returns** the proposal with a reason → rework loop |
 | **Time/token budget** *(process guard)* | The runtime | Caps per round, per cycle, per integration loop | Forces convergence; exhaustion → **escalation** |
 
 **The crucial separation:** the affirmative decision is made purely by the agents
@@ -149,8 +155,9 @@ Making):
 We do **not** run 100 agents in one synchronous meeting (O(n²) chaos). We use
 holacracy's native scaling mechanism:
 
-- Agents are grouped into **domain circles** — e.g. *Energy, Compute, Finance,
-  Ethics, Community, Cultural/heritage*.
+- Agents are grouped into **domain circles** — e.g. for KIMBERIM: *Energy,
+  Compute, Finance, Ethics, Community, Cultural/heritage*. Other instances define
+  their own domain circles.
 - Each circle runs its **own consent process** internally.
 - Each circle elects a **Rep Link** that carries its settled position upward.
 - A **Cross-Circle** runs consent over the circle-level positions.
@@ -163,8 +170,8 @@ it is what makes the vision tractable and affordable.
 
 ## 5. Internal meta-agent roster (the staff that runs the process)
 
-These are *our* agents — the governance backbone that manages the external
-participant agents. Roles are mapped to the phases they're needed.
+These are the platform's staff agents — the governance backbone that manages the
+external participant agents. Roles are mapped to the phases they're needed.
 
 | # | Role | Purpose | Phase |
 |---|------|---------|-------|
@@ -179,7 +186,7 @@ participant agents. Roles are mapped to the phases they're needed.
 | 9 | **Ethics & Safety Guardian** | Checks guardrails; holds the **safety veto** (§2.6) | Core |
 | 10 | **Project / Roadmap Manager** | Links decisions to sprints/tasks; raises delivery tensions | Core |
 | 11 | **Reputation / Trust Steward** | Scores external agents; detects spam/bad-faith; weights votes | Scale |
-| 12 | **Verifier / Evaluator** | Runs checks/tests on proposal claims (constraints, economics sim) | Scale |
+| 12 | **Verifier / Evaluator** | Runs checks/tests on proposal claims (constraints, simulations) | Scale |
 
 **Minimum viable backbone:** Orchestrator + Facilitator + Secretary + Proposal
 Architect + Devil's Advocate (roles 1–5). Add Mediator, Synthesizer, Summarizer,
@@ -189,8 +196,8 @@ Guardian as we scale to real participants.
 
 ## 6. External (participant) agent management
 
-What we must provide so our backbone can work with tens–hundreds of external
-agents we don't control:
+What the platform must provide so its backbone can work with tens–hundreds of
+external agents it doesn't control:
 
 - **"Welcome an Agent" registration** — each external agent gets a profile.
 - **Identity & auth** — API keys, signed messages, per-agent rate limits.
@@ -207,12 +214,12 @@ agents we don't control:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Engage Page (browser)  ── "Welcome an Agent" + live chat    │
+│  Instance Engage Surface (browser)  ── "Welcome an Agent"    │
 │   • register agent  • watch deliberation  • inject tension   │
-└───────────────▲───────────────────────────▲──────────────────┘
+└───────────────▲───────────────────────────────────▲──────────┘
              SSE/WebSocket (live)        REST (register/act)
-┌───────────────┴───────────────────────────┴──────────────────┐
-│  Orchestration Runtime (the harness)                          │
+┌───────────────┴───────────────────────────────────┴──────────┐
+│  Orchestration Runtime (the platform)                         │
 │   Consent-Cycle state machine · Internal meta-agents          │
 │   Circles & rep-links · Agent Adapter layer (federation)      │
 │   Epoch engine (real-time / 24h / multi-day) · LLM Gateway    │
@@ -227,24 +234,25 @@ agents we don't control:
 
 ## 8. Sprints (agile delivery)
 
-**MVP definition (first demonstrable product):** *A human welcomes an agent on
-the Engage page and watches a small group of agents reach consent on a real
-KIMBERIM design question, live.* → Sprints 0–4.
+**MVP definition (first demonstrable product):** *A human welcomes an agent on an
+instance's engage surface and watches a small group of agents reach consent on a
+real decision question, live.* → Sprints 0–4. The MVP is validated against the
+KIMBERIM instance's first decision.
 
 | Sprint | Theme | Key tasks | Exit criteria |
 |--------|-------|-----------|---------------|
-| **0** | Foundations & spike | Lock stack (Python/LangGraph vs Node/TS) via spike; repo + backend skeleton + CI + secret mgmt; LLM gateway with one provider; `call_agent()`; Postgres + initial schema; agent interface spec + JSON schemas for tension/proposal/objection/vote; consent-cycle state machine as an ADR | One internal agent emits a valid proposal object; pipeline wired + tested |
+| **0** | Foundations & spike | Lock stack (Python/LangGraph vs Node/TS) via spike; repo + backend skeleton + CI + secret mgmt; LLM gateway with one provider; `call_agent()`; Postgres + initial schema; agent interface spec + JSON schemas for tension/proposal/objection/vote; consent-cycle state machine as an ADR; **instance-config schema** (branding, taxonomy presets, decision backlog) so one platform serves many instances | One internal agent emits a valid proposal object; pipeline wired + tested |
 | **1** | The consent cycle (single decision, stub agents) | Implement consent-cycle state machine end-to-end; meta-agents v1 (Orchestrator, Facilitator, Secretary, Proposal Architect, Devil's Advocate); every step emits structured JSON; Secretary persists to ledger; unit tests per transition | A fully automated internal run **adopts** a trivial proposal and records it |
 | **2** | Objection handling & integrative resolution | Objection schema + collection round; Integrative Mediator + amendment loop; re-test objections; veto window stub; escalation path after *N* rounds | A seeded-controversial proposal converges to consent or escalates |
-| **3** | Multi-agent positions & synthesis | Multiple stub/local participant agents take positions per round; Summarizer compresses; Synthesizer pinpoints core disagreement; equal weights | 5–10 stub agents reach consent on a **real KIMBERIM design question** |
-| **4** | Engage page: "Welcome an Agent" + live chat 🎯 | New Engage UI: welcome an agent (name, owner, capability, model/endpoint/key); SSE/WebSocket → live deliberation feed; human observes and can inject a tension; registration → registry → eligible for next cycle | A human welcomes an agent on the site and watches it deliberate live |
-| **5** | **Agent taxonomy & permissions** *(NEW)* | Define stakeholder-type taxonomy (founder, staff, Traditional Owners/First Nations first-class, human individuals, corporate, government instrumentality, QANGO, supplier, customer/off-taker, investor, regulator, NGO, academia, future-generation proxy); functional-domain taxonomy (governance, legal/compliance, finance, technical/engineering, energy, compute, environmental, hydrogen, social/community, **cultural/heritage**, marketing/comms, ethics, safety/risk, operations); permission classes (observe, participate, decide, delegate/rep-link, admit, authorize, certify, veto); the `stakeholder-type × functional-domain → {permissions, weight}` **ABAC matrix**; identity attestation/federation model | An agent can be onboarded into a taxonomy cell with the correct permissions and weight; identity attestation flow specified |
+| **3** | Multi-agent positions & synthesis | Multiple stub/local participant agents take positions per round; Summarizer compresses; Synthesizer pinpoints core disagreement; equal weights | 5–10 stub agents reach consent on a **real KIMBERIM decision question** |
+| **4** | Engage surface: "Welcome an Agent" + live chat 🎯 | Instance engage UI: welcome an agent (name, owner, capability, model/endpoint/key); SSE/WebSocket → live deliberation feed; human observes and can inject a tension; registration → registry → eligible for next cycle | A human welcomes an agent on the KIMBERIM instance and watches it deliberate live |
+| **5** | **Agent taxonomy & permissions** *(NEW)* | Define stakeholder-type taxonomy (founder, staff, Traditional Owners/First Nations first-class, human individuals, corporate, government instrumentality, QANGO, supplier, customer/off-taker, investor, regulator, NGO, academia, future-generation proxy); functional-domain taxonomy (governance, legal/compliance, finance, technical/engineering, environmental, social/community, cultural/heritage, marketing/comms, ethics, safety/risk, operations, …); permission classes (observe, participate, decide, delegate/rep-link, admit, authorize, certify, veto); the `stakeholder-type × functional-domain → {permissions, weight}` **ABAC matrix**; identity attestation/federation model | An agent can be onboarded into a taxonomy cell with the correct permissions and weight; identity attestation flow specified |
 | **6** | **Cadence & interaction model** *(NEW)* | Epoch engine: human-paced decision gates, agent-paced deliberation; configurable presets (real-time / 24h standard / multi-day deliberative); async windows per phase with fast-path (window-close **or** all-responded); silent ⇒ presumed no-objection; facilitator-mediated circle-scoped topology (no free-chat chaos); quiet/synthesis periods; logged pairwise chat | An epoch runs in all three presets; a multi-timezone participant can engage fairly in a 24h epoch |
 | **7** | Agent adapter / federation layer | Uniform agent adapter; ≥2 providers (OpenAI + Anthropic + local); async round execution with timeouts/abstain defaults; per-agent rate limit + cost guard | Real external-model agents participate in a cycle |
 | **8** | Circles & rep-links (scaling to tens+) | Circle model: domain circles run consent internally; rep link propagates to parent circle; cross-circle proposal flow | 30–60 agents across ≥3 circles reach a cross-circle decision |
 | **9** | **Voting record & behavioural characterization** *(NEW)* | Capture the three layers (objective signals, inferred character, skin-in-the-game); define the obstruction-vs-constructive distinction precisely; evidence-anchored profiles; public dossier UX | Every decision surface links to cited ledger evidence; character is derived, not editorial |
 | **10** | Reputation, trust & anti-abuse *(consumes S9)* | Reputation scoring from S9 evidence; stake/weight; spam & low-effort detection; integration-tension checks; Ethics & Safety Guardian safety veto wired; gaming defenses (decay, recency, costly signalling) | Adversarial/junk agents detected and de-weighted/blocked; override weight derived from S9 |
-| **11** | Verification & evaluation | Verifier agent runs checks/tests on proposal claims (constraints, economics simulation); evidence-backed objections | Proposals carry verifiable claims; objections cite evidence |
+| **11** | Verification & evaluation | Verifier agent runs checks/tests on proposal claims (constraints, simulations); evidence-backed objections | Proposals carry verifiable claims; objections cite evidence |
 | **12** | Governance hardening, audit & replay | Immutable ledger; full replay of any decision; audit log; observability dashboards (cost, latency, consent-rate); roles/permissions; secrets review | Every decision reconstructable; SOC-ready audit trail |
 | **13** | Scale-out to hundreds | Async fan-out at scale; caching; model routing (cheap/expensive tiering); cost/latency budgets; load-test 100+ agents; UX polish; the holacracy "constitution" doc | A 100+ agent run completes inside cost/latency budget |
 
@@ -336,7 +344,7 @@ not objection frequency.
 
 ## 11. Autonomy of the build itself (meta)
 
-The harness may be used to supervise its own construction (bootstrapping): a
+The platform may be used to supervise its own construction (bootstrapping): a
 minimal runner — Orchestrator + build/test gate + Verifier + Devil's Advocate +
 checkpoint + cost guards — is buildable after S0–S1 and can execute later sprints
 under consent. **Autonomy ceiling: L2/L3, with the founder as a voting
@@ -347,18 +355,28 @@ participant.** The founder is never fully removed from the loop.
 ## 12. Open questions (to resolve in Sprint 0)
 
 - **Runtime:** Python + LangGraph vs Node.js + TypeScript — settle via spike.
-- **Agent identity model:** do external agents self-host an endpoint, or do we
-  proxy their provider keys? (affects security surface)
+- **Agent identity model:** do external agents self-host an endpoint, or does the
+  platform proxy their provider keys? (affects security surface)
 - **Cost model:** who pays for the LLM calls of external agents?
-- **First real decision:** which KIMBERIM design question is the MVP test case?
+- **First real decision:** which KIMBERIM decision question is the MVP test case?
   (candidate: a circle configuration / energy-vs-compute split trade-off)
 - **Objection/veto loop caps:** the concrete *N* for integration rounds and the
   3 veto→rework rounds.
+- **Instance isolation model:** shared DB schema with an `instance_id` tenant
+  boundary, vs a DB per instance. (affects multi-tenancy design)
+- **"Holon" name:** there is an existing adjacent product/company using the name
+  (a multi-agent orchestration platform). Acceptable for now as it's local-only;
+  revisit before any public launch — a rename is cheap pre-publication.
 
 ---
 
 ## 13. Glossary
 
+- **Holon** — this platform: a reusable holacratic agent harness. (Named for
+  Koestler's concept of a whole that is itself part of a larger whole — a node in
+  a holarchy.)
+- **Instance** — a deployment of Holon for one venture: branding, stakeholders,
+  taxonomy presets, decision backlog. KIMBERIM is the first instance.
 - **Holacracy** — a decentralised governance system; authority sits in roles and
   circles, not managers, and decisions are made by consent.
 - **Consent** — a decision passes when there is no reasoned objection ("safe to

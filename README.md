@@ -1,11 +1,20 @@
-# kimberim-agents
+# Holon
 
-> The holacratic agent harness for **KIMBERIM** — a federated, consent-governed
-> collective of agents (internal staff + external participants) that deliberate
-> and reach agreement on the goals and design of the Kimberley Rim Grid.
+> A reusable, holacratic agent harness for governed multi-stakeholder
+> collaboration. Federated, consent-governed collectives of AI agents and humans
+> deliberate and reach agreement on the goals and direction of **any**
+> collaborative venture.
 
-This repo holds the **orchestration runtime** (the harness), separate from the
-marketing/docs site ([`../kimberim-site`](../kimberim-site)).
+**Holon is the platform.** A deployment of Holon for one specific venture is an
+**instance** — with its own branding, stakeholders, taxonomy presets, and decision
+backlog. The first instance is
+[**KIMBERIM**](https://kimberim.com) (Kimberley Rim Grid); its instance config
+lives in `instances/kimberim/`.
+
+> *Named for Koestler's holon — a whole that is itself part of a larger whole.*
+> ⚠️ Note: the "Holon" name collides with an existing adjacent product/company
+> (a multi-agent orchestration platform). Fine while local-only; revisit before
+> any public launch. A rename is cheap pre-publication.
 
 ## Status
 
@@ -19,20 +28,30 @@ this repo implements it.
 
 | Area | Purpose |
 |------|---------|
-| `runtime/` (or `src/`) | The consent-cycle state machine + internal meta-agents |
+| `runtime/` (or `src/`) | The consent-cycle state machine + internal meta-agents (the **platform engine**) |
 | `agents/` | Agent-role implementations (Orchestrator, Facilitator, Secretary, …) |
 | `adapter/` | Uniform agent adapter — abstracts external providers (OpenAI/Anthropic/local) |
 | `gateway/` | LLM gateway: keys, routing, cost caps, cache |
 | `schema/` | JSON schemas for tension / proposal / objection / vote / decision |
 | `store/` | Persistence to the immutable ledger + agent registry (Postgres) |
-| `api/` | REST + SSE/WebSocket surface consumed by the Engage page |
+| `api/` | REST + SSE/WebSocket surface consumed by an instance's engage surface |
+| `instances/` | **Per-venture config** (branding, taxonomy presets, decision backlog). `instances/kimberim/` is the first. |
+
+## Multi-instance model
+
+One Holon codebase, many instances. An instance is a config package — branding,
+stakeholder-type & functional-domain presets, founder identity, initial decision
+backlog, circles. The engine is generic; instances make it specific. Instance
+isolation (shared DB + `instance_id` vs DB-per-instance) is an open Sprint 0
+question.
 
 ## Sprint 0 open decisions
 
 1. **Runtime** — Python + LangGraph vs Node.js + TypeScript (settled via spike).
 2. **Agent identity model** — self-hosted endpoints vs proxied provider keys.
 3. **Cost model** — who pays for external agents' LLM calls.
-4. **First real decision** — which KIMBERIM design question is the MVP test case.
+4. **First real decision** — which KIMBERIM decision question is the MVP test case.
+5. **Instance isolation model** — shared DB + tenant boundary vs DB-per-instance.
 
 ## Local setup
 
