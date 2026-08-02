@@ -6,9 +6,11 @@ from holon.agents.roles import (
     Facilitator,
     Founder,
     IntegrativeMediator,
+    JudgmentSynthesizer,
     Orchestrator,
     ProposalArchitect,
     Secretary,
+    Summarizer,
 )
 
 __all__ = [
@@ -16,9 +18,11 @@ __all__ = [
     "Facilitator",
     "Founder",
     "IntegrativeMediator",
+    "JudgmentSynthesizer",
     "MetaAgent",
     "Orchestrator",
     "ProposalArchitect",
     "Secretary",
     "StubAgent",
+    "Summarizer",
 ]

@@ -125,12 +125,52 @@ class Founder(MetaAgent):
     )
 
 
+class JudgmentSynthesizer(MetaAgent):
+    """Role 7 — finds the *real* disagreement among many positions (ROADMAP §5).
+
+    Called when multiple objections exist: identifies the single core
+    disagreement so the Integrative Mediator knows what to actually fix, rather
+    than addressing every surface-level objection. The 'pinpoint the core
+    disagreement' agent from the S3 row.
+    """
+
+    role = AgentRole.JUDGMENT_SYNTHESIZER
+    system_prompt = (
+        "You are the Judgment Synthesizer in Holon's holacratic consent cycle. Given several "
+        "objections to a proposal, identify the SINGLE core disagreement that underlies them — "
+        "the root concern the Integrative Mediator must actually resolve. Surface objections "
+        "often share one root cause; name it. Respond as JSON with keys: core_disagreement "
+        "(str), shared_by (list of the objection reasons that trace to it)."
+    )
+
+
+class Summarizer(MetaAgent):
+    """Role 8 — compresses many participant positions into a digest (ROADMAP §5).
+
+    The scalability workhorse: when many agents state positions per round, the
+    Summarizer compresses them so the Architect/Mediator reads one digest, not
+    dozens of raw messages. This is what makes tens-to-hundreds of agents
+    tractable (top level reads distilled positions, not raw outputs).
+    """
+
+    role = AgentRole.SUMMARIZER
+    system_prompt = (
+        "You are the Summarizer in Holon's holacratic consent cycle. Given many participant "
+        "positions on a proposal, compress them into a concise digest: how many consent, "
+        "object, or abstain; the recurring themes in objections; any shared concerns. Be "
+        "factual and compact. Respond as JSON with keys: consent_count, objection_count, "
+        "abstain_count, themes (list of str)."
+    )
+
+
 __all__ = [
     "DevilsAdvocate",
     "Facilitator",
     "Founder",
     "IntegrativeMediator",
+    "JudgmentSynthesizer",
     "Orchestrator",
     "ProposalArchitect",
     "Secretary",
+    "Summarizer",
 ]
