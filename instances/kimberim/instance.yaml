@@ -1,0 +1,86 @@
+# Holon instance config — KIMBERIM (the first instance)
+#
+# One Holon codebase, many instances. An instance is a config package:
+# branding, stakeholder/domain taxonomy presets, founder identity, initial
+# decision backlog, circles. The engine is generic; this file makes it specific.
+# Validated against src/holon/config.py:InstanceConfig.
+
+instance_id: kimberim
+display_name: KIMBERIM
+tagline: Kimberley Rim Grid — a 1 GW solar-updraft-tower green-compute campus.
+
+# The principal — holds the founder veto (ROADMAP §2.3): reason-given,
+# windowed, overridable after 3 veto->rework rounds at 75% supermajority.
+founder:
+  name: Adrian
+  role: principal
+
+# Domain circles this instance runs (ROADMAP §4). Refined in Sprint 5.
+domain_circles:
+  - energy
+  - compute
+  - finance
+  - ethics
+  - community
+  - cultural-heritage
+
+# The first decision the instance's agents will deliberate — the MVP test case.
+first_decision:
+  id: kimberim-001
+  title: Energy-vs-compute split
+  summary: >
+    How much of the 1 GW generation capacity should be allocated to the grid
+    versus on-site compute, and on what basis (economic, strategic, community)?
+  # Seed tensions for the Proposal Architect to turn into proposals.
+  seed_tensions:
+    - "Maximising grid export revenue may crowd out the compute value-add."
+    - "On-site compute could anchor a local industry but raises water/heat demand."
+
+# Link to the instance's engage surface (the marketing site's Engage section).
+engage_surface:
+  url: https://kimberim.com
+  repo: ../kimberim-site
+
+# Branding tokens (pulled from the KIMBERIM wordmark — see kimberim-site/styles.css).
+branding:
+  primary_color: "#10B981"
+  primary_color_dark: "#059669"
+  ink: "#0F172A"
+  display_font: Sora
+  body_font: Inter
+  mono_font: JetBrains Mono
+
+# Taxonomy presets (full ABAC matrix is built in Sprint 5; presets seeded here).
+taxonomy:
+  # Stakeholder types first-class for this instance (ROADMAP §8, S5).
+  # NOTE: Traditional Owners / First Nations (Miriwoong/Gija) are a first-class,
+  # non-negotiable stakeholder — KIMBERIM is on Country.
+  stakeholder_types:
+    - founder
+    - staff
+    - traditional-owners
+    - corporate
+    - government-instrumentality
+    - qango
+    - supplier
+    - customer-offtaker
+    - investor
+    - regulator
+    - ngo
+    - academia
+    - future-generation-proxy
+  functional_domains:
+    - governance
+    - legal-compliance
+    - finance
+    - technical-engineering
+    - energy
+    - compute
+    - environmental
+    - hydrogen
+    - social-community
+    - cultural-heritage
+    - marketing-comms
+    - ethics
+    - safety-risk
+    - operations
