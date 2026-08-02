@@ -18,7 +18,7 @@ in the repo root.
 | `display_name` | KIMBERIM | |
 | `founder` | (the principal) | holds the founder veto (ROADMAP §2.3) |
 | `domain_circles` | Energy, Compute, Finance, Ethics, Community, Cultural/heritage | ROADMAP §4; refine in Sprint 5 |
-| `first_decision` | _(TBD)_ candidate: circle configuration / energy-vs-compute split | MVP test case |
+| `first_decision` | **Energy-vs-compute split** | MVP test case — how much of the 1 GW capacity is allocated to the grid vs on-site compute. Pinned 2026-08-02. |
 | `engage_surface` | links to the marketing site's Engage section | `../kimberim-site` |
 
 ## Notes specific to this instance
