@@ -219,6 +219,10 @@ class LedgerEvent(BaseModel):
         "veto-override",
         "escalation",
         "decision-recorded",
+        # S3: multi-agent positions + synthesis.
+        "position-stated",
+        "digest",
+        "core-disagreement",
     ]
     # The structured payload (one of the cycle models above), JSON-encoded.
     payload: dict

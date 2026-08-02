@@ -58,8 +58,10 @@ def test_tension_to_proposal_to_adoption():
     assert final["state"] == "adopted"
     # The proposal was carried through to the decision.
     assert final["proposal"]["title"] == "Cap compute at 30%"
-    # Ledger sequence: drafted -> consent -> decision.
-    assert events == ["proposal-drafted", "consent-reached", "decision-recorded"]
+    # Ledger sequence (S3 enriched): drafted -> position -> vote -> consent -> decision.
+    assert events[0] == "proposal-drafted"
+    assert "consent-reached" in events
+    assert events[-1] == "decision-recorded"
 
 
 def test_objection_then_integration_then_adoption():

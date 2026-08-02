@@ -113,41 +113,98 @@ def draft(state: CycleState, run: CycleRun) -> CycleState:
 
 
 def object_round(state: CycleState, run: CycleRun) -> CycleState:
-    """OBJECTING — the Devil's Advocate (mandatory) raises any valid objection.
+    """OBJECTING — every participant + the mandatory Devil's Advocate states a
+    position on the proposal (ROADMAP §2.4, S3 row).
 
-    S1 uses only the Devil's Advocate as the objector (mandatory per ADR). S3
-    adds participant agents. Returns the objections list for this round.
+    Each agent returns {"position": "consent"|"objection"|"abstain", ...}. An
+    objection becomes a structured Objection (causes-harm / not-safe-to-try /
+    regresses-role). The DA is always consulted (ADR: mandatory red-team).
+
+    If a Summarizer is wired AND >2 agents responded, it compresses the round's
+    positions into a digest (the scalability workhorse). When participant_agents
+    is empty → S2 back-compat (DA only).
     """
     da = run.devils_advocate
     if da is None:
         raise RuntimeError("CycleRun has no devils_advocate")
 
     proposal_payload = state["proposal"]
-    prompt = (
-        "Object to this proposal ONLY if it causes harm, is not safe to try, "
-        "or regresses a role. If you object, respond as JSON with keys: "
-        "criterion (one of causes-harm|not-safe-to-try|regresses-role), reason. "
-        "If you have NO valid objection, respond exactly: {\"objection\": false}.\n\n"
-        f"Proposal: {json.dumps(proposal_payload)}"
-    )
-    text = da.respond(prompt, max_tokens=400, temperature=0.3)
-    payload = _extract_json(text)
+    proposal_json = json.dumps(proposal_payload)
 
     objections: list[dict] = []
-    if payload.get("objection", True) is not False and "criterion" in payload:
-        ob = Objection(
-            instance_id=run.instance_id,
-            proposal_id=proposal_payload["id"],
-            raised_by=getattr(da, "ref", AgentRef(
-                instance_id=run.instance_id, role=AgentRole.DEVILS_ADVOCATE)),
-            reason=payload.get("reason", ""),
-            criterion=payload["criterion"],
-            validity=ObjectionValidity.VALID,
+    positions: list[dict] = []
+
+    # ── Position prompt shared by participants and the DA ────────────────────
+    position_prompt = (
+        "State your position on this proposal. Respond as JSON: "
+        '{"position": "consent" | "objection" | "abstain"}. If you object, ALSO '
+        'include "criterion" (one of causes-harm|not-safe-to-try|regresses-role) '
+        'and "reason". Only object if the proposal causes harm, is not safe to '
+        f'try, or regresses a role. Proposal: {proposal_json}'
+    )
+
+    def _record(agent, *, mandatory: bool = False) -> None:
+        """Ask one agent for its position; record position + any objection.
+
+        Tolerates BOTH response formats for back-compat with S1/S2 stubs:
+          - new (S3): {"position": "consent"|"objection"|"abstain", ...}
+          - old (S1/S2): {"objection": false} -> consent; {"criterion":...} -> objection
+        """
+        ref = getattr(agent, "ref", None) or AgentRef(instance_id=run.instance_id)
+        text = agent.respond(position_prompt, max_tokens=400, temperature=0.3)
+        payload = _extract_json(text)
+
+        # Resolve the position from whichever format the agent used.
+        if "position" in payload:
+            pos = payload.get("position", "abstain").strip().lower()
+        elif payload.get("objection", True) is False:
+            pos = "consent"  # old format: explicit no-objection == consent
+        elif "criterion" in payload:
+            pos = "objection"  # old format: a criterion means an objection
+        else:
+            pos = "abstain"
+        if pos not in ("consent", "objection", "abstain"):
+            pos = "abstain"
+
+        positions.append({"agent_id": str(ref.agent_id), "position": pos,
+                          "display_name": ref.display_name, "weight": ref.weight})
+        _emit(run, "position-stated", {"agent_id": str(ref.agent_id), "position": pos})
+        if pos == "objection":
+            criterion = payload.get("criterion", "not-safe-to-try")
+            if criterion not in ("causes-harm", "not-safe-to-try", "regresses-role"):
+                criterion = "not-safe-to-try"
+            ob = Objection(
+                instance_id=run.instance_id,
+                proposal_id=proposal_payload["id"],
+                raised_by=ref,
+                reason=payload.get("reason", ""),
+                criterion=criterion,
+                validity=ObjectionValidity.VALID,
+            )
+            od = ob.model_dump(mode="json")
+            _emit(run, "objection-raised", od)
+            objections.append(od)
+
+    # S3: every participant agent states a position.
+    for agent in getattr(run, "participant_agents", []) or []:
+        _record(agent)
+    # The Devil's Advocate is always consulted (mandatory red-team).
+    _record(da, mandatory=True)
+
+    # S3: optionally compress when there are many positions.
+    digest: dict | None = None
+    summarizer = getattr(run, "summarizer", None)
+    if summarizer is not None and len(positions) > 2:
+        digest_text = summarizer.respond(
+            f"Compress these positions into a digest. Positions: {json.dumps(positions)}",
+            max_tokens=300, temperature=0.2,
         )
-        od = ob.model_dump(mode="json")
-        _emit(run, "objection-raised", od)
-        objections.append(od)
-    return {"state": "objecting", "objections": objections}
+        digest = _extract_json(digest_text)
+        if digest:
+            _emit(run, "digest", digest)
+
+    return {"state": "objecting", "objections": objections,
+            "positions": positions, "digest": digest}
 
 
 def integrate(state: CycleState, run: CycleRun) -> CycleState:
@@ -172,6 +229,22 @@ def integrate(state: CycleState, run: CycleRun) -> CycleState:
     proposal_payload = state["proposal"]
     objections = state.get("objections", [])
     if amender is not None and objections:
+        # S3: when >1 objection, the Judgment Synthesizer pinpoints the core
+        # disagreement so the Mediator fixes the root cause, not every surface
+        # objection.
+        core_disagreement = ""
+        synthesizer = getattr(run, "judgment_synthesizer", None)
+        if synthesizer is not None and len(objections) > 1:
+            syn_text = synthesizer.respond(
+                "Identify the single core disagreement underlying these objections. "
+                f"Objections: {json.dumps(objections)}",
+                max_tokens=300, temperature=0.2,
+            )
+            syn_payload = _extract_json(syn_text)
+            core_disagreement = syn_payload.get("core_disagreement", "") if syn_payload else ""
+            if core_disagreement:
+                _emit(run, "core-disagreement", {"core_disagreement": core_disagreement})
+
         prompt = (
             "Amend this proposal to address the objection(s) while keeping it safe to "
             "try (reversible, regresses no role). Respond as the SAME JSON shape "
@@ -179,6 +252,11 @@ def integrate(state: CycleState, run: CycleRun) -> CycleState:
             f"Current proposal: {json.dumps(proposal_payload)}\n"
             f"Objections: {json.dumps(objections)}"
         )
+        if core_disagreement:
+            prompt += (
+                f"\nCore disagreement to resolve (per the Judgment Synthesizer): "
+                f"{core_disagreement}"
+            )
         text = amender.respond(prompt, max_tokens=600, temperature=0.4)
         payload = _extract_json(text)
         if payload:
@@ -194,43 +272,87 @@ def integrate(state: CycleState, run: CycleRun) -> CycleState:
                 "state": "integrating",
                 "proposal": merged,
                 "integration_rounds": rounds,
+                "core_disagreement": core_disagreement,
             }
     return {"integration_rounds": rounds}
 
 
 def consent_test(state: CycleState, run: CycleRun) -> CycleState:
-    """CONSENT_TEST — weighted tally: consent if no valid objection remains.
+    """CONSENT_TEST — record a formal weighted Vote per participant.
 
-    S1: the Devil's Advocate is the sole objector; 'no objections this round' =
-    consent. S3 generalises to weighted participant votes. Abstain counts as
-    neither (governance.abstain_counts_as == 'neither', ADR open-q #2).
+    In holacracy, objections are resolved in the object↔integrate loop BEFORE
+    consent is tested, so consent_test is reached only with no objections this
+    round — everyone has either consented or abstained. This node records a
+    Vote (with AgentRef.weight) for each agent who stated a position, computes
+    the weighted tally, and emits consent-reached.
+
+    Abstain counts as neither consent nor objection by default
+    (governance.abstain_counts_as == 'neither', ADR open-q #2). If set to
+    'consent', abstainers inflate the consent weight.
+
+    S2 back-compat: when no participant positions exist, the DA casts the
+    single consent vote (the original S1 behaviour).
     """
     objections = state.get("objections", [])
-    votes: list[dict] = []
-    if not objections:
+    proposal_id = state["proposal"]["id"]
+    da_ref = getattr(run.devils_advocate, "ref", AgentRef(
+        instance_id=run.instance_id, role=AgentRole.DEVILS_ADVOCATE))
+    positions = state.get("positions", [])
+
+    # Defensive: if somehow reached WITH objections (shouldn't happen via the
+    # current routing), re-route to integration by casting an objection vote.
+    if objections:
         v = Vote(
-            instance_id=run.instance_id,
-            proposal_id=state["proposal"]["id"],
-            cast_by=getattr(run.devils_advocate, "ref", AgentRef(
-                instance_id=run.instance_id, role=AgentRole.DEVILS_ADVOCATE)),
-            kind=VoteKind.CONSENT,
+            instance_id=run.instance_id, proposal_id=proposal_id, cast_by=da_ref,
+            kind=VoteKind.OBJECTION, objection_id=objections[0]["id"],
+        )
+        _emit(run, "vote-cast", v.model_dump(mode="json"))
+        return {"state": "consent-test", "votes": [v.model_dump(mode="json")]}
+
+    votes: list[dict] = []
+    if positions:
+        # S3: a Vote per participant, weighted, kind from their stated position.
+        # Build a lookup of agent_id -> position so each vote matches the round.
+        for pos in positions:
+            ref = AgentRef(
+                agent_id=pos["agent_id"], instance_id=run.instance_id,
+                role=AgentRole.PARTICIPANT,
+                display_name=pos.get("display_name", ""),
+                weight=pos.get("weight", 1.0),
+            )
+            kind = {"consent": VoteKind.CONSENT,
+                    "abstain": VoteKind.ABSTAIN}.get(pos["position"], VoteKind.ABSTAIN)
+            v = Vote(
+                instance_id=run.instance_id, proposal_id=proposal_id,
+                cast_by=ref, kind=kind,
+            )
+            vd = v.model_dump(mode="json")
+            votes.append(vd)
+            _emit(run, "vote-cast", vd)
+    else:
+        # S2 back-compat: DA casts the single consent vote.
+        v = Vote(
+            instance_id=run.instance_id, proposal_id=proposal_id,
+            cast_by=da_ref, kind=VoteKind.CONSENT,
         )
         votes.append(v.model_dump(mode="json"))
-        _emit(run, "consent-reached", {"proposal_id": state["proposal"]["id"]})
-        return {"state": "consent-test", "votes": votes}
-    # Re-collect objections: send back through integration. Link the vote to
-    # the objection that caused it (Vote.objection_id, previously None).
-    first_objection_id = objections[0]["id"] if objections else None
-    v = Vote(
-        instance_id=run.instance_id,
-        proposal_id=state["proposal"]["id"],
-        cast_by=getattr(run.devils_advocate, "ref", AgentRef(
-            instance_id=run.instance_id, role=AgentRole.DEVILS_ADVOCATE)),
-        kind=VoteKind.OBJECTION,
-        objection_id=first_objection_id,
-    )
-    votes.append(v.model_dump(mode="json"))
-    _emit(run, "vote-cast", v.model_dump(mode="json"))
+
+    # Weighted tally (consulting abstain_counts_as).
+    abstain_as = run.governance.abstain_counts_as
+    weighted_consent = 0.0
+    for vd in votes:
+        w = vd["cast_by"]["weight"]
+        if vd["kind"] == "consent":
+            weighted_consent += w
+        elif vd["kind"] == "abstain" and abstain_as == "consent":
+            weighted_consent += w
+
+    _emit(run, "consent-reached", {
+        "proposal_id": proposal_id,
+        "weighted_consent": weighted_consent,
+        "votes": len(votes),
+    })
+    return {"state": "consent-test", "votes": votes}
     return {"state": "consent-test", "votes": votes}
 
 

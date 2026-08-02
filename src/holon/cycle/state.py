@@ -44,6 +44,13 @@ class CycleState(TypedDict, total=False):
     founder_vetoed: bool
     veto_overridden: bool
     veto_reason: str
+    # S3: per-participant positions collected in object_round
+    # ({"agent_id","position":"consent"|"objection"|"abstain", ...}).
+    positions: list[dict]
+    # S3: the Summarizer's compressed digest of the round's positions (if any).
+    digest: dict | None
+    # S3: the Synthesizer's identified core disagreement (if >1 objection).
+    core_disagreement: str
     # Terminal outcome ('adopted' | 'rejected' | 'escalated') once reached.
     outcome: str
 
@@ -72,6 +79,13 @@ class CycleRun:
     # makes the veto exercisable. Both optional for back-compat with S1.
     integrative_mediator: object | None = None
     founder: object | None = None
+    # S3: participant agents that take positions per round (each conforming to
+    # the Agent Protocol, with .ref + .respond). The DA stays mandatory and is
+    # consulted separately. When empty -> S2 back-compat (DA only).
+    participant_agents: list = field(default_factory=list)
+    # S3: synthesis agents (optional; activate when there are many participants).
+    summarizer: object | None = None
+    judgment_synthesizer: object | None = None
     # Ledger sink: signature (event_type, payload_dict) -> None. When None,
     # events are only captured in state (no DB write) — used by unit tests.
     ledger_sink: LedgerSink | None = None
@@ -94,6 +108,11 @@ class CycleRun:
                 # read by record). Defaults preserve S1's no-veto behavior.
                 "founder_vetoed": False,
                 "veto_overridden": False,
+                # S3: multi-agent positions + synthesis (set by object_round /
+                # integrate when participant_agents are present).
+                "positions": [],
+                "digest": None,
+                "core_disagreement": "",
             }
 
 
