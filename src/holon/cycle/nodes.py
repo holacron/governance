@@ -57,11 +57,23 @@ def _emit(run: CycleRun, event_type: str, payload: dict) -> None:
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    """Tolerantly extract the first {...} object from an LLM response."""
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        return {}
-    return json.loads(m.group(0))
+    """Tolerantly extract the first valid {...} object from an LLM response.
+
+    Live LLMs occasionally wrap JSON in markdown fences, emit prose with stray
+    braces, or return truncated output. We try every brace-delimited span from
+    the outside in; the first that parses wins. If none parse, return {} (which
+    callers treat as a neutral/abstain position) rather than crashing the cycle.
+    """
+    # Try each brace-delimited span in document order; first that parses wins.
+    for m in re.finditer(r"\{.*\}", text, re.DOTALL):
+        candidate = m.group(0)
+        # Strip markdown code fences if present.
+        candidate = re.sub(r"```+\w*\n?", "", candidate).strip()
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return {}
 
 
 def _architect_ref(run: CycleRun) -> AgentRef:

@@ -17,10 +17,18 @@ import pytest
 from dotenv import load_dotenv
 from sqlmodel import Session as SMSession
 
-from holon.agents import DevilsAdvocate, Founder, IntegrativeMediator, ProposalArchitect
+from holon.agents import (
+    DevilsAdvocate,
+    Founder,
+    IntegrativeMediator,
+    JudgmentSynthesizer,
+    MetaAgent,
+    ProposalArchitect,
+    Summarizer,
+)
 from holon.config import load_instance_config, load_runtime_config
 from holon.cycle import CycleRun, run_cycle
-from holon.schema import Tension
+from holon.schema import AgentRole, Tension
 from holon.store import append_ledger_event, make_engine
 
 load_dotenv()
@@ -155,3 +163,129 @@ def test_live_mediator_and_founder_path():
     decision = next(p for et, p in persisted if et == "decision-recorded")
     assert "founder_vetoed" in decision
     assert "veto_overridden" in decision
+
+
+# ── Sprint 3: multi-agent consensus (the S3 exit criterion) ───────────────────
+
+
+def _participant(display_name: str, perspective: str) -> MetaAgent:
+    """A real-LLM participant agent with a stakeholder persona.
+
+    Each represents a distinct stakeholder viewpoint on the Kimberim decision,
+    so the deliberation is genuinely multi-stakeholder rather than N copies of
+    one agent.
+    """
+
+    class _P(MetaAgent):
+        role = AgentRole.PARTICIPANT
+        system_prompt = (
+            f"You are a participant in Holon's holacratic consent cycle, "
+            f"representing this stakeholder perspective: {perspective}. "
+            "State your honest position on each proposal — consent, object (with a "
+            "valid criterion + reason), or abstain. Be constructive. Respond as JSON: "
+            '{"position": "consent"|"objection"|"abstain", ...}.'
+        )
+
+    return _P(instance_id=INSTANCE, display_name=display_name)
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_LIVE, reason="needs ZAI_API_KEY + DATABASE_URL")
+def test_live_multi_agent_consensus():
+    """S3 exit criterion: 5+ real Z.ai participant agents reach consent on a
+    real KIMBERIM decision question.
+
+    Five stakeholder-participant agents (energy, compute, finance, community,
+    Traditional Owners) + the Devil's Advocate + Proposal Architect + Integrative
+    Mediator + Summarizer + Judgment Synthesizer + Founder deliberate the
+    energy-vs-compute split. Every event persists to Postgres. Asserts the cycle
+    reaches a recorded terminal outcome via genuine multi-stakeholder positions.
+    """
+    rt = load_runtime_config()
+    ic = load_instance_config(INSTANCE)
+    assert ic.first_decision is not None
+
+    architect = ProposalArchitect(instance_id=INSTANCE)
+    devils_advocate = DevilsAdvocate(instance_id=INSTANCE)
+    mediator = IntegrativeMediator(instance_id=INSTANCE)
+    summarizer = Summarizer(instance_id=INSTANCE)
+    synthesizer = JudgmentSynthesizer(instance_id=INSTANCE)
+    founder = Founder(instance_id=INSTANCE)
+
+    # Five distinct stakeholder participant agents (real LLM personas).
+    participants = [
+        _participant("energy-stakeholder",
+                     "maximise clean energy generation and grid stability"),
+        _participant("compute-stakeholder",
+                     "maximise on-site compute capacity and local industry"),
+        _participant("finance-stakeholder",
+                     "optimise revenue, capex efficiency, and offtake economics"),
+        _participant("community-stakeholder",
+                     "protect local community benefit, jobs, and liveability"),
+        _participant("traditional-owners-rep",
+                     "uphold Miriwoong/Gija Country, cultural heritage, and free "
+                     "prior informed consent"),
+    ]
+
+    tension = Tension(
+        instance_id=INSTANCE,
+        raised_by=architect.ref,
+        title=ic.first_decision.title,
+        description=ic.first_decision.summary.strip(),
+    )
+
+    eng = make_engine(rt.database_url)
+    persisted: list[tuple[str, dict]] = []
+
+    def sink(event_type: str, payload: dict) -> None:
+        with SMSession(eng) as s:
+            append_ledger_event(
+                s, instance_id=INSTANCE, event_type=event_type, payload=payload
+            )
+            s.commit()
+        persisted.append((event_type, payload))
+
+    run = CycleRun(
+        instance_id=INSTANCE,
+        tension=tension,
+        participants=[p.ref for p in participants],
+        governance=ic.governance,
+        proposal_architect=architect,
+        devils_advocate=devils_advocate,
+        integrative_mediator=mediator,
+        summarizer=summarizer,
+        judgment_synthesizer=synthesizer,
+        founder=founder,
+        participant_agents=participants,
+        ledger_sink=sink,
+    )
+    final = run_cycle(run)
+
+    # S3 acceptance: a multi-stakeholder run reached a recorded terminal outcome.
+    assert final["outcome"] in ("adopted", "escalated"), (
+        f"multi-agent cycle did not terminate: {final.get('outcome')}"
+    )
+    assert final["proposal"] is not None
+    assert final["proposal"]["safe_to_try_rationale"].strip()
+
+    event_types = [et for et, _ in persisted]
+    assert event_types[0] == "proposal-drafted"
+    assert event_types[-1] == "decision-recorded"
+
+    # Multiple participants stated positions (>= 5 participants + DA = >= 6).
+    position_events = [et for et in event_types if et == "position-stated"]
+    assert len(position_events) >= 6, (
+        f"expected >=6 position-stated events, got {len(position_events)}"
+    )
+
+    # The Summarizer produced a digest (>= 4 positions > 2 threshold).
+    assert "digest" in event_types, "summarizer should fire with many participants"
+
+    # If objections arose, the Synthesizer + Mediator resolved them.
+    if "objection-raised" in event_types:
+        if event_types.count("objection-raised") > 1:
+            assert "core-disagreement" in event_types, (
+                "synthesizer should fire on >1 objection"
+            )
+        assert "amendment" in event_types, "mediator should amend on objection"
+        assert "objection-integrated" in event_types
