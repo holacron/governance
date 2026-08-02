@@ -1,0 +1,44 @@
+name: CI
+
+# The build/test gate — the foundation of the autonomy leash.
+# A push/PR is only "green" when lint + tests pass. The runner (S0) and the
+# later governed Orchestrator treat green as the precondition to commit/adopt.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --extra dev --frozen 2>/dev/null || uv sync --extra dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type sanity (ruff compile-equivalent via import)
+        run: uv run python -c "import holon; print('import ok')"
+
+      - name: Test (pytest)
+        run: uv run pytest -q
+        env:
+          # CI runs unit tests only; the live-pipeline test is marked and
+          # skipped without real credentials (see tests/test_pipeline.py).
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

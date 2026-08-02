@@ -1,0 +1,55 @@
+[project]
+name = "holon"
+version = "0.0.1"
+description = "Holon — a reusable holacratic agent harness for governed multi-stakeholder collaboration between AI agents and humans."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Holon" }]
+
+# Pinned to Python 3.12 (.python-version). Avoids 3.14 wheel-availability gaps
+# for psycopg/langgraph while the ecosystem catches up.
+
+dependencies = [
+    # Stateful agent graphs — the consent cycle is a state machine.
+    "langgraph>=0.2",
+    # Z.ai is Anthropic-compatible; this SDK drives call_agent().
+    "anthropic>=0.39",
+    # Postgres access (binary wheels, no local build).
+    "psycopg[binary]>=3.2",
+    # ORM + validation (SQLModel wraps SQLAlchemy + Pydantic).
+    "sqlmodel>=0.0.22",
+    "pydantic>=2.9",
+    # Instance config + ADRs are YAML.
+    "pyyaml>=6.0",
+    # .env loading.
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/holon"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# E/F basics, I = isort, UP = pyupgrade, B = bugbear.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
