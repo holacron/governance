@@ -84,3 +84,12 @@ taxonomy:
     - ethics
     - safety-risk
     - operations
+
+# Governance parameters for the consent cycle (ADR 0001). Tunable per instance.
+governance:
+  integration_loop_cap: 3        # max integration rounds before escalation
+  veto_window_h: 24              # founder veto window (hours; timezone-fair)
+  veto_round_cap: 3              # veto->rework rounds before participant override
+  override_threshold: 0.75       # weighted supermajority to override a veto
+  abstain_counts_as: neither     # abstain = not-an-objection (ADR open-q #2)
+

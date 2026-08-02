@@ -106,6 +106,30 @@ class TaxonomyPresets(BaseModel):
     functional_domains: list[str] = Field(default_factory=list)
 
 
+class GovernanceConfig(BaseModel):
+    """Tunable governance parameters for the consent cycle (ADR 0001).
+
+    These are the '§2.5 knobs' and the ADR's 'parameters left to Sprint 0→1'.
+    Per-instance so each venture can tune its own holacracy. Defaults match the
+    ADR's proposed values.
+    """
+
+    # Max integration rounds before the cycle escalates (ADR: default 3).
+    integration_loop_cap: int = 3
+    # Founder veto window length in hours (ADR: default 24h, timezone-fair).
+    veto_window_h: float = 24.0
+    # Max veto->rework rounds before participant override is available (confirmed: 3).
+    veto_round_cap: int = 3
+    # Override threshold as a fraction of weighted participant votes (confirmed: 0.75).
+    override_threshold: float = 0.75
+    # How abstain (silent-past-window) counts in the weighted tally.
+    # 'neither' = abstain contributes to neither consent nor objection weight
+    # (ADR open question #2, resolved: abstain = not-an-objection).
+    abstain_counts_as: Literal["neither", "consent"] = "neither"
+
+    model_config = {"extra": "ignore"}
+
+
 class InstanceConfig(BaseModel):
     """A deployment of Holon for one venture (ROADMAP §7, §13 glossary)."""
 
@@ -118,6 +142,7 @@ class InstanceConfig(BaseModel):
     engage_surface: EngageSurface = Field(default_factory=EngageSurface)
     branding: Branding = Field(default_factory=Branding)
     taxonomy: TaxonomyPresets = Field(default_factory=TaxonomyPresets)
+    governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
 
     model_config = {"extra": "ignore"}
 
