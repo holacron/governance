@@ -1,0 +1,6 @@
+-- Holon initial schema (Sprint 0)
+-- Tables: instance, agent_registry, tension, proposal, vote,
+--         decision, ledger_event, runner_state.
+-- Applied via SQLModel.metadata.create_all() (idempotent).
+-- All tables carry instance_id (tenant isolation).
+-- ledger_event is append-only (immutable).
