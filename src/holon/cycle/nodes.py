@@ -151,8 +151,14 @@ def object_round(state: CycleState, run: CycleRun) -> CycleState:
 
 
 def integrate(state: CycleState, run: CycleRun) -> CycleState:
-    """INTEGRATING — amend the proposal to address objections (ADR open-q #1:
-    a withdrawn/reduced objection is handled here). Increments the loop counter.
+    """INTEGRATING — the Integrative Mediator amends the proposal to address
+    objections (ROADMAP §2.4), then objections are re-tested.
+
+    Falls back to the Proposal Architect if no Mediator is wired (S1 back-compat).
+    Increments the loop counter; at the cap, escalates (ADR §2.5). Each addressed
+    objection is marked `integrated: true` (the schema field, previously unset).
+    Withdraw (ADR open-q #1) is modelled by the objector raising no objection on
+    re-test — handled naturally by object_round on the next pass.
     """
     rounds = state.get("integration_rounds", 0) + 1
     cap = run.governance.integration_loop_cap
@@ -161,25 +167,29 @@ def integrate(state: CycleState, run: CycleRun) -> CycleState:
         _emit(run, "escalation", {"reason": "integration_loop_cap_exceeded", "rounds": rounds})
         return {"state": "escalated", "integration_rounds": rounds, "outcome": "escalated"}
 
-    # Ask the architect to amend the proposal in light of the objections.
-    architect = run.proposal_architect
+    # Prefer the Mediator (S2); fall back to the architect (S1 back-compat).
+    amender = run.integrative_mediator or run.proposal_architect
     proposal_payload = state["proposal"]
     objections = state.get("objections", [])
-    if architect is not None and objections:
+    if amender is not None and objections:
         prompt = (
-            "Amend this proposal to address the objection(s). Respond as the SAME "
-            "JSON shape (title, context, change, expected_impact, safe_to_try_rationale).\n"
+            "Amend this proposal to address the objection(s) while keeping it safe to "
+            "try (reversible, regresses no role). Respond as the SAME JSON shape "
+            "(title, context, change, expected_impact, safe_to_try_rationale).\n"
             f"Current proposal: {json.dumps(proposal_payload)}\n"
             f"Objections: {json.dumps(objections)}"
         )
-        text = architect.respond(prompt, max_tokens=600, temperature=0.4)
+        text = amender.respond(prompt, max_tokens=600, temperature=0.4)
         payload = _extract_json(text)
         if payload:
             merged = {**proposal_payload, **payload}
             merged["id"] = str(uuid4())  # amended proposal = new artefact
             _emit(run, "amendment", merged)
+            # Mark each objection integrated (schema field now set) + emit events.
             for ob in objections:
-                _emit(run, "objection-integrated", {"objection_id": ob["id"]})
+                _emit(run, "objection-integrated", {
+                    "objection_id": ob["id"], "integrated": True,
+                })
             return {
                 "state": "integrating",
                 "proposal": merged,
@@ -208,13 +218,16 @@ def consent_test(state: CycleState, run: CycleRun) -> CycleState:
         votes.append(v.model_dump(mode="json"))
         _emit(run, "consent-reached", {"proposal_id": state["proposal"]["id"]})
         return {"state": "consent-test", "votes": votes}
-    # Re-collect objections: send back through integration.
+    # Re-collect objections: send back through integration. Link the vote to
+    # the objection that caused it (Vote.objection_id, previously None).
+    first_objection_id = objections[0]["id"] if objections else None
     v = Vote(
         instance_id=run.instance_id,
         proposal_id=state["proposal"]["id"],
         cast_by=getattr(run.devils_advocate, "ref", AgentRef(
             instance_id=run.instance_id, role=AgentRole.DEVILS_ADVOCATE)),
         kind=VoteKind.OBJECTION,
+        objection_id=first_objection_id,
     )
     votes.append(v.model_dump(mode="json"))
     _emit(run, "vote-cast", v.model_dump(mode="json"))
@@ -222,20 +235,80 @@ def consent_test(state: CycleState, run: CycleRun) -> CycleState:
 
 
 def veto_window(state: CycleState, run: CycleRun) -> CycleState:
-    """FOUNDER_VETO_WINDOW — in S1 the founder is a stub that does not veto.
+    """FOUNDER_VETO_WINDOW — the founder may veto a consented proposal (§2.3).
 
-    The veto_round counter and override path exist but are not exercised (needs
-    reputation weighting, S10). This node advances to ADOPTED by default.
+    - No founder wired, or founder does not veto → proceed to ADOPTED.
+    - Founder vetoes WITH a reason → emit `founder-veto`, increment veto_rounds.
+      If veto_rounds < veto_round_cap → route back to draft (rework loop).
+      If veto_rounds >= veto_round_cap → the stubbed override: proceed anyway,
+      emitting `veto-override` with veto_overridden=True (the real reputation-
+      weighted 75% override is S10).
+
+    S2's window is synchronous/in-process; S6 owns real async windows.
     """
-    # Hook for a future founder agent: if it vetoes with a reason, increment
-    # veto_rounds and return to PROPOSAL_DRAFTED. For S1, no veto.
-    return {"state": "founder-veto-window"}
+    founder = run.founder
+    # No founder wired → S1 back-compat: no veto, proceed.
+    if founder is None:
+        return {"state": "founder-veto-window", "founder_vetoed": False, "veto_overridden": False}
+
+    proposal_payload = state["proposal"]
+    prompt = (
+        "The agents have reached consent on this proposal. As the founder, decide "
+        "whether to VETO it (send it back for rework) or let it proceed. Respond as "
+        f'JSON: {{"veto": bool, "reason": str}}. Default to proceeding. Proposal: '
+        f"{json.dumps(proposal_payload)}"
+    )
+    text = founder.respond(prompt, max_tokens=300, temperature=0.2)
+    payload = _extract_json(text)
+    vetoed = bool(payload.get("veto", False)) and bool(payload.get("reason", "").strip())
+
+    if not vetoed:
+        # Explicitly clear veto flags: LangGraph merges state, so a stale True
+        # from a prior round must be overwritten or route_after_veto misroutes.
+        return {
+            "state": "founder-veto-window",
+            "founder_vetoed": False,
+            "veto_overridden": False,
+        }
+
+    # Veto with reason: emit + increment.
+    veto_rounds = state.get("veto_rounds", 0) + 1
+    _emit(run, "founder-veto", {
+        "proposal_id": proposal_payload["id"],
+        "reason": payload.get("reason", ""),
+        "veto_rounds": veto_rounds,
+    })
+
+    # Stubbed override: past the cap, the veto is overruled and we proceed.
+    if veto_rounds >= run.governance.veto_round_cap:
+        _emit(run, "veto-override", {
+            "proposal_id": proposal_payload["id"],
+            "veto_rounds": veto_rounds,
+            "note": "stubbed override (proceed-after-cap); real 75% override is S10",
+        })
+        return {
+            "state": "founder-veto-window",
+            "veto_rounds": veto_rounds,
+            "founder_vetoed": True,
+            "veto_overridden": True,
+        }
+
+    # Within the cap: signal a rework (route_after_veto routes to draft).
+    return {
+        "state": "founder-veto-window",
+        "veto_rounds": veto_rounds,
+        "founder_vetoed": True,
+        # A pending veto reason could seed the next tension; carried in state.
+        "veto_reason": payload.get("reason", ""),
+    }
 
 
 def record(state: CycleState, run: CycleRun) -> CycleState:
     """Terminal — Secretary records the Decision + a decision-recorded event.
 
     outcome is already set by the path that reached here (adopted/escalated).
+    Veto bookkeeping is read from state (set by veto_window) — no longer
+    hard-coded.
     """
     outcome = state.get("outcome") or "adopted"
     proposal_id = state["proposal"]["id"] if state.get("proposal") else None
@@ -247,8 +320,8 @@ def record(state: CycleState, run: CycleRun) -> CycleState:
                                        if v.get("kind") == "consent"])),
         "weighted_objection": float(len([v for v in state.get("votes", [])
                                          if v.get("kind") == "objection"])),
-        "founder_vetoed": False,
-        "veto_overridden": False,
+        "founder_vetoed": bool(state.get("founder_vetoed", False)),
+        "veto_overridden": bool(state.get("veto_overridden", False)),
     }
     _emit(run, "decision-recorded", decision_payload)
     final_state = "adopted" if outcome == "adopted" else ("escalated" if outcome == "escalated"
@@ -276,8 +349,14 @@ def route_after_consent_test(state: CycleState) -> str:
     return G_CONSENT if consented else G_NO_CONSENT
 
 
-def route_after_veto(state: CycleState, run: CycleRun) -> str:
-    # S1: founder never vetoes. Hook for S10's override logic.
+def route_after_veto(state: CycleState) -> str:
+    """Route after the founder veto window (single-arg: LangGraph passes state).
+
+    G_VETO   → back to draft (rework) when the founder vetoed within the cap.
+    G_NO_VETO → to record when no veto, or past the cap (stubbed override).
+    """
+    if state.get("founder_vetoed") and not state.get("veto_overridden", False):
+        return G_VETO
     return G_NO_VETO
 
 

@@ -40,6 +40,10 @@ class CycleState(TypedDict, total=False):
     votes: list[dict]  # Vote dicts from the consent test
     integration_rounds: int
     veto_rounds: int
+    # S2: veto bookkeeping (set by veto_window, read by record).
+    founder_vetoed: bool
+    veto_overridden: bool
+    veto_reason: str
     # Terminal outcome ('adopted' | 'rejected' | 'escalated') once reached.
     outcome: str
 
@@ -64,6 +68,10 @@ class CycleRun:
     devils_advocate: object | None = None
     secretary: object | None = None
     orchestrator: object | None = None
+    # S2: the Mediator owns amendment (distinct from the architect); the founder
+    # makes the veto exercisable. Both optional for back-compat with S1.
+    integrative_mediator: object | None = None
+    founder: object | None = None
     # Ledger sink: signature (event_type, payload_dict) -> None. When None,
     # events are only captured in state (no DB write) — used by unit tests.
     ledger_sink: LedgerSink | None = None
@@ -82,6 +90,10 @@ class CycleRun:
                 "integration_rounds": 0,
                 "veto_rounds": 0,
                 "outcome": "",
+                # S2: veto bookkeeping carried in state (set by veto_window,
+                # read by record). Defaults preserve S1's no-veto behavior.
+                "founder_vetoed": False,
+                "veto_overridden": False,
             }
 
 

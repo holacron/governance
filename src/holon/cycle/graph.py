@@ -69,8 +69,13 @@ def build_consent_graph(run: CycleRun) -> CompiledStateGraph:
         {N.G_CONSENT: "veto_window", N.G_NO_CONSENT: "integrate"},
     )
 
-    # veto_window -> record (S1: founder never vetoes).
-    g.add_edge("veto_window", "record")
+    # veto_window -> {draft (rework) | record} based on whether the founder
+    # vetoed within the cap. S2: real conditional edge (was a plain edge in S1).
+    g.add_conditional_edges(
+        "veto_window",
+        N.route_after_veto,
+        {N.G_VETO: "draft", N.G_NO_VETO: "record"},
+    )
     # record is terminal.
     g.add_edge("record", END)
 
