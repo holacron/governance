@@ -17,7 +17,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlmodel import Session as SMSession
 
-from holon.agents import DevilsAdvocate, ProposalArchitect
+from holon.agents import DevilsAdvocate, Founder, IntegrativeMediator, ProposalArchitect
 from holon.config import load_instance_config, load_runtime_config
 from holon.cycle import CycleRun, run_cycle
 from holon.schema import Tension
@@ -85,3 +85,73 @@ def test_live_cycle_adopts_and_records():
     assert "decision-recorded" in persisted
     assert persisted[0] == "proposal-drafted"
     assert persisted[-1] == "decision-recorded"
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_LIVE, reason="needs ZAI_API_KEY + DATABASE_URL")
+def test_live_mediator_and_founder_path():
+    """S2 acceptance: the Integrative Mediator + Founder participate for real.
+
+    Real Z.ai Proposal Architect + Devil's Advocate + Integrative Mediator +
+    Founder run the cycle against Kimberim's first decision; every event
+    persists to Postgres. Asserts the S2 machinery (mediator amendment, veto
+    bookkeeping) executes against live LLMs and reaches a recorded terminal
+    outcome.
+    """
+    rt = load_runtime_config()
+    ic = load_instance_config(INSTANCE)
+    assert ic.first_decision is not None
+
+    architect = ProposalArchitect(instance_id=INSTANCE)
+    devils_advocate = DevilsAdvocate(instance_id=INSTANCE)
+    mediator = IntegrativeMediator(instance_id=INSTANCE)
+    founder = Founder(instance_id=INSTANCE)
+
+    tension = Tension(
+        instance_id=INSTANCE,
+        raised_by=architect.ref,
+        title=ic.first_decision.title,
+        description=ic.first_decision.summary.strip(),
+    )
+
+    eng = make_engine(rt.database_url)
+    persisted: list[tuple[str, dict]] = []
+
+    def sink(event_type: str, payload: dict) -> None:
+        with SMSession(eng) as s:
+            append_ledger_event(
+                s, instance_id=INSTANCE, event_type=event_type, payload=payload
+            )
+            s.commit()
+        persisted.append((event_type, payload))
+
+    run = CycleRun(
+        instance_id=INSTANCE,
+        tension=tension,
+        participants=[architect.ref],
+        governance=ic.governance,
+        proposal_architect=architect,
+        devils_advocate=devils_advocate,
+        integrative_mediator=mediator,
+        founder=founder,
+        ledger_sink=sink,
+    )
+    final = run_cycle(run)
+
+    # Reached a recorded terminal outcome via the S2 machinery.
+    assert final["outcome"] in ("adopted", "escalated")
+    assert final["proposal"] is not None
+    event_types = [et for et, _ in persisted]
+    assert event_types[0] == "proposal-drafted"
+    assert event_types[-1] == "decision-recorded"
+
+    # If an objection occurred, the Mediator's amendment + integration must have
+    # run (objection-integrated), proving the integrative-resolution path.
+    if "objection-raised" in event_types:
+        assert "amendment" in event_types, "mediator should amend on objection"
+        assert "objection-integrated" in event_types
+
+    # The decision record carries the (now state-derived) veto bookkeeping.
+    decision = next(p for et, p in persisted if et == "decision-recorded")
+    assert "founder_vetoed" in decision
+    assert "veto_overridden" in decision
