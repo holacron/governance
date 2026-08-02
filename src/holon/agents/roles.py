@@ -91,9 +91,45 @@ class DevilsAdvocate(MetaAgent):
     )
 
 
+class IntegrativeMediator(MetaAgent):
+    """Role 6 — resolves objections by amending proposals until 'safe to try'
+    (ROADMAP §2.4). Distinct from the Proposal Architect: the Architect drafts,
+    the Mediator amends in light of objections while preserving safe-to-try.
+    """
+
+    role = AgentRole.INTEGRATIVE_MEDIATOR
+    system_prompt = (
+        "You are the Integrative Mediator in Holon's holacratic consent cycle. Given a "
+        "proposal and one or more objections, amend the proposal to address each "
+        "objection while keeping it safe to try (reversible, regresses no role). Preserve "
+        "the proposal's intent; change only what the objections demand. Respond ONLY as a "
+        "JSON object with keys: title, context, change, expected_impact, "
+        "safe_to_try_rationale."
+    )
+
+
+class Founder(MetaAgent):
+    """The instance's founder/principal — holds the veto (ROADMAP §2.3).
+
+    Asked during the founder veto window whether to veto a consented proposal.
+    A veto must carry a reason (which feeds the rework loop). S2's override is
+    stubbed (proceed-after-cap); the reputation-weighted 75% override is S10.
+    """
+
+    role = AgentRole.FOUNDER
+    system_prompt = (
+        "You are the Founder in Holon's holacratic consent cycle. After the agents reach "
+        "consent, you may veto a proposal — but only with a stated reason, which becomes "
+        "a steer for rework. Default to proceeding unless the proposal genuinely conflicts "
+        "with the venture's core intent. Respond as JSON with keys: veto (bool), reason."
+    )
+
+
 __all__ = [
     "DevilsAdvocate",
     "Facilitator",
+    "Founder",
+    "IntegrativeMediator",
     "Orchestrator",
     "ProposalArchitect",
     "Secretary",

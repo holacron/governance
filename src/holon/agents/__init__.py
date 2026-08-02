@@ -4,6 +4,8 @@ from holon.agents.base import MetaAgent, StubAgent
 from holon.agents.roles import (
     DevilsAdvocate,
     Facilitator,
+    Founder,
+    IntegrativeMediator,
     Orchestrator,
     ProposalArchitect,
     Secretary,
@@ -12,6 +14,8 @@ from holon.agents.roles import (
 __all__ = [
     "DevilsAdvocate",
     "Facilitator",
+    "Founder",
+    "IntegrativeMediator",
     "MetaAgent",
     "Orchestrator",
     "ProposalArchitect",
