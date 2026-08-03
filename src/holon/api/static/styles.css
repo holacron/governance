@@ -1,0 +1,15 @@
+:root {
+  --green: #10B981;
+  --green-deep: #059669;
+  --ink: #0F172A;
+  --paper: #F8FAFC;
+  --slate: #64748B;
+  --line: #E2E8F0;
+  --radius: 14px;
+  --font-display: 'Sora', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font-body); color: var(--ink); background: var(--paper); }
+.engage { max-width: 880px; margin: 4rem auto; padding: 0 1.5rem; }
+h1 { font-family: var(--font-display); }
