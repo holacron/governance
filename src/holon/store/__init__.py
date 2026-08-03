@@ -178,30 +178,26 @@ def make_engine(database_url: str, echo: bool = False):
 
 
 def apply_migrations(database_url: str) -> None:
-    """Create all tables (idempotent). Sprint 0 uses SQLModel.metadata.create_all;
-    a proper migration tool (alembic) is a later-sprint refinement.
+    """Apply the authoritative SQL migrations, then reconcile with the ORM model.
+
+    The .sql files in migrations/ are the source of truth (idempotent: IF NOT
+    EXISTS / ADD COLUMN IF NOT EXISTS), run in filename order. This handles BOTH
+    fresh setup and upgrading an existing DB (e.g. an S0-era DB missing the S4
+    registration columns). A `create_all` backstop catches any drift between the
+    files and the SQLModel definitions. A proper migration tool (alembic) is a
+    later-sprint refinement.
     """
     eng = make_engine(database_url)
+    sql_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
+    with eng.begin() as conn:
+        for path in sql_files:
+            sql = path.read_text(encoding="utf-8")
+            # psycopg3 executescript-equivalent: run the whole script.
+            conn.exec_driver_sql(sql)
+            log.info("applied migration %s", path.name)
+    # Backstop: ensure anything in the ORM model not in a .sql file is created.
     SQLModel.metadata.create_all(eng)
-    log.info("schema applied (all tables ensured)")
-
-
-def record_migration_files() -> None:
-    """Write a human-readable migration note alongside the code-generated schema."""
-    note = MIGRATIONS_DIR / "0001_initial.sql"
-    if note.exists():
-        return
-    note.parent.mkdir(parents=True, exist_ok=True)
-    # Reflect the intent; the actual DDL is emitted by SQLModel at apply time.
-    note.write_text(
-        "-- Holon initial schema (Sprint 0)\n"
-        "-- Tables: instance, agent_registry, tension, proposal, vote,\n"
-        "--         decision, ledger_event, runner_state.\n"
-        "-- Applied via SQLModel.metadata.create_all() (idempotent).\n"
-        "-- All tables carry instance_id (tenant isolation).\n"
-        "-- ledger_event is append-only (immutable).\n",
-        encoding="utf-8",
-    )
+    log.info("schema applied (%d migration files + create_all backstop)", len(sql_files))
 
 
 # ── Ledger helper ─────────────────────────────────────────────────────────────
@@ -290,6 +286,5 @@ __all__ = [
     "apply_migrations",
     "list_agents",
     "make_engine",
-    "record_migration_files",
     "register_agent",
 ]
