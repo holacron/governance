@@ -56,6 +56,12 @@ class AgentRegistryRow(SQLModel, table=True):
     display_name: str = ""
     # Stake/reputation weight (ROADMAP §2.3, §9).
     weight: float = 1.0
+    # S4 registration fields (defaults preserve back-compat with S0-S3 inserts).
+    owner: str = ""
+    capability: str = ""  # the stakeholder perspective / capability description
+    model: str = ""  # provider model id (captured for S7 federation)
+    endpoint: str = ""  # provider base URL (captured for S7 federation)
+    api_key_enc: str = ""  # registered key (opaque; NOT used in MVP execution)
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -226,6 +232,50 @@ def append_ledger_event(
     return row
 
 
+# ── Agent registration helpers (S4) ───────────────────────────────────────────
+
+
+def register_agent(
+    session: SMSession,
+    *,
+    instance_id: str,
+    display_name: str,
+    owner: str = "",
+    capability: str = "",
+    role: str = "participant",
+    weight: float = 1.0,
+    model: str = "",
+    endpoint: str = "",
+    api_key_enc: str = "",
+) -> AgentRegistryRow:
+    """Register an external/participant agent (ROADMAP §6 'Welcome an Agent').
+
+    The registered agent becomes eligible for the next cycle. model/endpoint/
+    api_key_enc are captured for S7 federation; for the MVP the agent executes
+    via the platform's own gateway.
+    """
+    row = AgentRegistryRow(
+        instance_id=instance_id,
+        role=role,
+        display_name=display_name,
+        weight=weight,
+        owner=owner,
+        capability=capability,
+        model=model,
+        endpoint=endpoint,
+        api_key_enc=api_key_enc,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_agents(session: SMSession, *, instance_id: str) -> list[AgentRegistryRow]:
+    """List registered agents for an instance."""
+    stmt = select(AgentRegistryRow).where(AgentRegistryRow.instance_id == instance_id)
+    return list(session.exec(stmt).all())
+
+
 __all__ = [
     "ALL_TABLES",
     "AgentRegistryRow",
@@ -238,6 +288,8 @@ __all__ = [
     "VoteRow",
     "append_ledger_event",
     "apply_migrations",
+    "list_agents",
     "make_engine",
     "record_migration_files",
+    "register_agent",
 ]
