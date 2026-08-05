@@ -1,34 +1,34 @@
-# Holon — Holacratic Agent Harness Roadmap
+# HOLACRON — Holacratic Cron Governance Roadmap
 
 > A federated, holacratic platform where agents (and humans) from many
 > stakeholders deliberate and reach **consent** on the goals and direction of any
 > collaborative venture — and the foundation pattern for a new class of venture.
 
-**Status:** Planning — Sprint 0 spike pending.
-**Decision rule:** consent-first (§2). **Runtime:** chosen via a Sprint 0 spike.
-**First instance:** [KIMBERIM](https://kimberim.com) (Kimberley Rim Grid) — see
+**Status:** MVP complete (Sprints 0–4); S5+ in progress.
+**Decision rule:** consent-first (§2). **Runtime:** Python + LangGraph.
+**First Holon:** [KIMBERIM](https://kimberim.com) (Kimberley Rim Grid) — see
 `instances/kimberim/`.
 
-> **What Holon is** (generic): the platform.
-> **What an instance is** (specific): a deployment of Holon for one venture,
+> **What HOLACRON is** (generic): the platform — Holacratic Cron Governance.
+> **What a Holon is** (specific): a deployment of HOLACRON for one venture,
 > with its own branding, stakeholders, taxonomy presets, and decision backlog.
-> KIMBERIM is the first instance, not the product.
+> KIMBERIM is the first Holon, not the product.
 
 ---
 
 ## 1. Vision
 
-Holon is a **reusable platform for governed multi-stakeholder collaboration
-between AI agents and humans.** A participant can **"welcome an agent to the
-chat"** on an instance's engage surface; that agent joins a holacratic group of
-agents representing all participants. Together — internal staff agents and
-external participant agents — they must reach **agreement on the goals and the
-best course of action for the venture.**
+HOLACRON (Holacratic Cron Governance) is a **reusable platform for governed
+multi-stakeholder collaboration between AI agents and humans.** A participant
+can **"welcome an agent to the chat"** on a Holon's engage surface; that agent
+joins a holacratic group of agents representing all participants. Together —
+internal staff agents and external participant agents — they must reach
+**agreement on the goals and the best course of action for the venture.**
 
 This is unusual and unique: a venture whose strategic decisions are made by a
 federated collective of agents governed by holacracy rather than by a single
 founder or board. The intent is that this becomes **the operating model for many
-future ventures** — each one an *instance* of Holon.
+future ventures** — each one a *Holon* governed by HOLACRON.
 
 ### Why this is hard (and worth doing)
 
@@ -363,20 +363,19 @@ participant.** The founder is never fully removed from the loop.
 - **Objection/veto loop caps:** the concrete *N* for integration rounds and the
   3 veto→rework rounds.
 - **Instance isolation model:** shared DB schema with an `instance_id` tenant
-  boundary, vs a DB per instance. (affects multi-tenancy design)
-- **"Holon" name:** there is an existing adjacent product/company using the name
-  (a multi-agent orchestration platform). Acceptable for now as it's local-only;
-  revisit before any public launch — a rename is cheap pre-publication.
+  boundary, vs a DB per instance. (affects multi-tenancy design) — resolved: shared
+  schema + tenant column.
 
 ---
 
 ## 13. Glossary
 
-- **Holon** — this platform: a reusable holacratic agent harness. (Named for
-  Koestler's concept of a whole that is itself part of a larger whole — a node in
-  a holarchy.)
-- **Instance** — a deployment of Holon for one venture: branding, stakeholders,
-  taxonomy presets, decision backlog. KIMBERIM is the first instance.
+- **HOLACRON** — the platform: Holacratic Cron Governance. A reusable,
+  consent-governed harness that orchestrates collectives of agents and humans.
+- **Holon** — a deployment of HOLACRON for one venture: branding, stakeholders,
+  taxonomy presets, decision backlog. (Named for Koestler's concept of a whole
+  that is itself part of a larger whole — a node in a holarchy.) KIMBERIM is the
+  first Holon.
 - **Holacracy** — a decentralised governance system; authority sits in roles and
   circles, not managers, and decisions are made by consent.
 - **Consent** — a decision passes when there is no reasoned objection ("safe to

@@ -1,9 +1,9 @@
-# Holon instance config — KIMBERIM (the first instance)
+# Holon config — KIMBERIM (the first Holon of HOLACRON)
 #
-# One Holon codebase, many instances. An instance is a config package:
+# One HOLACRON codebase, many Holons. A Holon is a config package:
 # branding, stakeholder/domain taxonomy presets, founder identity, initial
 # decision backlog, circles. The engine is generic; this file makes it specific.
-# Validated against src/holon/config.py:InstanceConfig.
+# Validated against src/holon/config/__init__.py:InstanceConfig.
 
 instance_id: kimberim
 display_name: KIMBERIM

@@ -1,4 +1,4 @@
-"""Base classes for Holon agents.
+"""Base classes for HOLACRON agents.
 
 Two flavours:
   - `MetaAgent`: an LLM-backed staff role. Wraps `call_agent()` with a

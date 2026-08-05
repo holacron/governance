@@ -7,7 +7,7 @@
 
 ## Context
 
-Holon's central artefact is a decision-making protocol — the holacratic consent
+HOLACRON's central artefact is a decision-making protocol — the holacratic consent
 cycle. Every decision the platform makes (and, via the bootstrap runner in §11,
 every decision about *building* the platform) flows through it. We need a precise,
 machine-checkable definition of its states and transitions before Sprint 1

@@ -1,72 +1,56 @@
-# Holon
+# HOLACRON
 
-> A reusable, holacratic agent harness for governed multi-stakeholder
-> collaboration. Federated, consent-governed collectives of AI agents and humans
-> deliberate and reach agreement on the goals and direction of **any**
-> collaborative venture.
+> **Holacratic Cron Governance** — a reusable, consent-governed platform where
+> collectives of AI agents and humans deliberate and reach agreement on the
+> goals and direction of any collaborative venture.
 
-**Holon is the platform.** A deployment of Holon for one specific venture is an
-**instance** — with its own branding, stakeholders, taxonomy presets, and decision
-backlog. The first instance is
-[**KIMBERIM**](https://kimberim.com) (Kimberley Rim Grid); its instance config
+**HOLACRON is the platform.** A deployment of HOLACRON for one specific venture
+is a **Holon** — a project with its own branding, stakeholders, taxonomy
+presets, and decision backlog. The first Holon is
+[**KIMBERIM**](https://kimberim.com) (Kimberley Rim Grid); its Holon config
 lives in `instances/kimberim/`.
 
-> *Named for Koestler's holon — a whole that is itself part of a larger whole.*
-> ⚠️ Note: the "Holon" name collides with an existing adjacent product/company
-> (a multi-agent orchestration platform). Fine while local-only; revisit before
-> any public launch. A rename is cheap pre-publication.
+> *A "Holon" is named for Koestler's term — a whole that is itself part of a
+> larger whole. HOLACRON governs many Holons; each Holon is a node in the
+> holacracy.*
 
 ## Status
 
-🟢 **Sprint 0 — Foundations & spike** (not yet started).
+🟢 **MVP complete (Sprints 0–4).** The consent cycle runs, the engage UI is live,
+and KIMBERIM's agents deliberate real decisions. See the commit log and tests.
 
 The full strategy, governance model, architecture, roles, protocol, and sprint
 breakdown live in **[`./docs/ROADMAP.md`](./docs/ROADMAP.md)**. Read that first —
 this repo implements it.
 
-## What lives here (target)
+## What lives here
 
 | Area | Purpose |
 |------|---------|
-| `runtime/` (or `src/`) | The consent-cycle state machine + internal meta-agents (the **platform engine**) |
-| `agents/` | Agent-role implementations (Orchestrator, Facilitator, Secretary, …) |
-| `adapter/` | Uniform agent adapter — abstracts external providers (OpenAI/Anthropic/local) |
-| `gateway/` | LLM gateway: keys, routing, cost caps, cache |
-| `schema/` | JSON schemas for tension / proposal / objection / vote / decision |
-| `store/` | Persistence to the immutable ledger + agent registry (Postgres) |
-| `api/` | REST + SSE/WebSocket surface consumed by an instance's engage surface |
-| `instances/` | **Per-venture config** (branding, taxonomy presets, decision backlog). `instances/kimberim/` is the first. |
+| `src/holon/` | The platform engine: consent-cycle state machine + meta-agents |
+| `src/holon/agents/` | Agent-role implementations (Orchestrator, Facilitator, Secretary, …) |
+| `src/holon/gateway/` | LLM gateway: keys, routing, cost caps, cache |
+| `src/holon/schema/` | JSON schemas for tension / proposal / objection / vote / decision |
+| `src/holon/store/` | Persistence to the immutable ledger + agent registry (Postgres) |
+| `src/holon/api/` | REST + SSE engage surface (FastAPI) + the engage UI |
+| `instances/` | **Per-Holon config** (branding, taxonomy, decision backlog). `instances/kimberim/` is the first Holon. |
 
-## Multi-instance model
+## Multi-Holon model
 
-One Holon codebase, many instances. An instance is a config package — branding,
+One HOLACRON codebase, many Holons. A Holon is a config package — branding,
 stakeholder-type & functional-domain presets, founder identity, initial decision
-backlog, circles. The engine is generic; instances make it specific. Instance
-isolation (shared DB + `instance_id` vs DB-per-instance) is an open Sprint 0
-question.
-
-## Sprint 0 open decisions
-
-1. **Runtime** — Python + LangGraph vs Node.js + TypeScript (settled via spike).
-2. **Agent identity model** — self-hosted endpoints vs proxied provider keys.
-3. **Cost model** — who pays for external agents' LLM calls.
-4. **First real decision** — which KIMBERIM decision question is the MVP test case.
-5. **Instance isolation model** — shared DB + tenant boundary vs DB-per-instance.
+backlog, circles. The engine is generic; a Holon's config makes it specific.
+Holon isolation uses a shared DB schema with an `instance_id` tenant column.
 
 ## Local setup
 
-_TBD in Sprint 0._ Provisional:
-
 ```bash
-# Copy the secrets template and fill in your provider key(s)
-cp .env.example .env
-# edit .env
-
-# (Python path)            |  (Node path)
-# python -m venv .venv     |  npm install
-# .venv/Scripts/activate   |
-# pip install -e .[dev]    |
-# pytest                   |  npm test
+uv sync --extra dev                     # install deps
+uv run python -c "from holon.store import apply_migrations; \
+  from holon.config import load_runtime_config; \
+  apply_migrations(load_runtime_config().database_url)"   # create tables
+uv run pytest                           # run the gate
+uv run uvicorn holon.api.server:app --port 8787   # serve the engage UI
 ```
 
 ## Git conventions

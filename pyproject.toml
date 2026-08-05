@@ -1,7 +1,7 @@
 [project]
 name = "holon"
 version = "0.0.1"
-description = "Holon — a reusable holacratic agent harness for governed multi-stakeholder collaboration between AI agents and humans."
+description = "HOLACRON — Holacratic Cron Governance: a reusable consent-governed platform for multi-stakeholder collaboration between AI agents and humans."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { text = "Proprietary" }

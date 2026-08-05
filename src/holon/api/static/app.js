@@ -1,4 +1,4 @@
-// Holon engage UI — vanilla JS, no dependencies.
+// HOLACRON engage UI — vanilla JS, no dependencies.
 // Loads the instance summary, registers agents, starts a deliberation, and
 // streams the consent-cycle events live via SSE.
 
@@ -68,7 +68,7 @@ function showOutcome(outcome) {
 async function loadInstance() {
   const r = await fetch(`/instances/${INSTANCE}`);
   const data = await r.json();
-  $("brand-name").textContent = data.display_name || "Holon";
+  $("brand-name").textContent = data.display_name || "HOLACRON";
   $("instance-tagline").textContent = data.tagline || "";
   if (data.first_decision) {
     $("decision-title").textContent = data.first_decision.title;

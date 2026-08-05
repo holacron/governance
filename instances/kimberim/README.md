@@ -1,11 +1,11 @@
-# Holon instance — KIMBERIM
+# Holon — KIMBERIM
 
-> The first instance of the [Holon](../..) platform, for the
-> [**Kimberley Rim Grid**](https://kimberim.com) — a conceptual 1 GW
+> The first [Holon](../..) of the [HOLACRON](../..) platform — for the
+> [**Kimberley Rim Grid**](https://kimberim.com), a conceptual 1 GW
 > solar-updraft-tower green-compute campus for the East Kimberley, Western
 > Australia.
 
-This directory holds the **instance config** that makes the generic Holon engine
+This directory holds the **Holon config** that makes the generic HOLACRON engine
 specific to KIMBERIM: branding, stakeholder & domain taxonomy presets, founder
 identity, initial decision backlog, and domain circles. The engine itself lives
 in the repo root.

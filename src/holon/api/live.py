@@ -46,7 +46,7 @@ def _participant_agent(display_name: str, capability: str, instance_id: str) -> 
     class _Registered(MetaAgent):
         role = AgentRole.PARTICIPANT
         system_prompt = (
-            f"You are a participant in Holon's holacratic consent cycle, "
+            f"You are a participant in HOLACRON's holacratic consent cycle, "
             f"representing this stakeholder perspective: {capability or 'a general '
             'stakeholder interest'}. State your honest position on each proposal. "
             "Be constructive. Respond as JSON: "

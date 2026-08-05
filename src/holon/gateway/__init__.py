@@ -169,7 +169,7 @@ class LLMGateway:
     @staticmethod
     def _role_preamble(role: str) -> str:
         return (
-            f"You are the '{role}' role in Holon — a holacratic, consent-governed "
+            f"You are the '{role}' role in HOLACRON — a holacratic, consent-governed "
             "collective of agents. Be precise and structured. Respond as JSON when "
             "asked. Do not roleplay other agents."
         )

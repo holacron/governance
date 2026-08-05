@@ -1,4 +1,4 @@
-"""The Holon engage API server (S4) — FastAPI + SSE on HARNESS_PORT.
+"""The HOLACRON engage API server (S4) — FastAPI + SSE on HARNESS_PORT.
 
 Serves the instance engage UI + REST (register/act) + SSE (live deliberation
 feed). Built ON TOP of the S0-S3 engine; the engine is unchanged.
@@ -24,7 +24,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 def create_app() -> FastAPI:
     """Build the FastAPI app. The FeedBroker is a process-wide singleton
     (in-memory; fine for a single-node local MVP)."""
-    app = FastAPI(title="Holon Engage", version="0.0.1")
+    app = FastAPI(title="HOLACRON Engage", version="0.0.1")
     app.state.broker = FeedBroker()
 
     app.include_router(router)
