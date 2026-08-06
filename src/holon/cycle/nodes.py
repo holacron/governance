@@ -33,7 +33,6 @@ log = logging.getLogger(__name__)
 
 # ── Guard return-value constants (named edges in graph.py) ────────────────────
 # Centralised so a typo is a NameError, not a silent misroute.
-G_TO_DRAFT = "to_draft"                       # TENSION_RAISED -> PROPOSAL_DRAFTED
 G_OBJECTIONS = "has_objections"               # OBJECTING -> INTEGRATING
 G_NO_OBJECTIONS = "no_objections"             # OBJECTING -> CONSENT_TEST
 G_LOOP_CAP = "loop_cap"                       # INTEGRATING -> ESCALATED
@@ -269,6 +268,14 @@ def integrate(state: CycleState, run: CycleRun) -> CycleState:
             f"Current proposal: {json.dumps(proposal_payload)}\n"
             f"Objections: {json.dumps(objections)}"
         )
+        # H8: wire the round's Summarizer digest into the Mediator's context.
+        # The digest was computed in object_round but never surfaced to the
+        # amender — so the Mediator amended blind to the round's consensus shape
+        # and stated concerns. Now it sees them, so it can resolve objections in
+        # light of what the whole circle actually said.
+        digest = state.get("digest")
+        if digest:
+            prompt += f"\nRound digest (Summarizer compression of all positions): {json.dumps(digest)}"
         if core_disagreement:
             prompt += (
                 f"\nCore disagreement to resolve (per the Judgment Synthesizer): "
@@ -318,6 +325,12 @@ def consent_test(state: CycleState, run: CycleRun) -> CycleState:
 
     # Defensive: if somehow reached WITH objections (shouldn't happen via the
     # current routing), re-route to integration by casting an objection vote.
+    #
+    # DEAD in S4: in the current graph, objections route object -> integrate and
+    # never reach consent_test, so this branch is unreachable today. It is kept
+    # (not deleted) because S5 (multi-objector weighted tally / re-routed
+    # consent_test) may revive it. If you find yourself here, the routing has
+    # changed — treat the presence of objections as a real signal, not a bug.
     if objections:
         v = Vote(
             instance_id=run.instance_id, proposal_id=proposal_id, cast_by=da_ref,
@@ -369,7 +382,6 @@ def consent_test(state: CycleState, run: CycleRun) -> CycleState:
         "weighted_consent": weighted_consent,
         "votes": len(votes),
     })
-    return {"state": "consent-test", "votes": votes}
     return {"state": "consent-test", "votes": votes}
 
 
@@ -536,7 +548,6 @@ __all__ = [
     "G_NO_VETO",
     "G_OBJECTIONS",
     "G_RETEST",
-    "G_TO_DRAFT",
     "G_VETO",
     "consent_test",
     "draft",

@@ -242,6 +242,77 @@ def test_synthesizer_finds_core_disagreement():
     assert final["core_disagreement"] == "grid-revenue risk"
 
 
+# ── H8 regression: the Summarizer digest feeds the Mediator's prompt ────────
+
+
+def test_digest_is_wired_into_mediator_prompt():
+    """H8 regression: the round's Summarizer digest must reach the Integrative
+    Mediator's amendment prompt, not be computed and discarded.
+
+    Pre-H8 the digest was emitted + stored in state but never read by the
+    amender — so the Mediator amended blind to the round's consensus shape. Now
+    it sees the digest and can resolve objections in light of what the whole
+    circle actually said.
+
+    We capture the prompt the Mediator receives and assert the digest payload
+    is present in it.
+    """
+    arch = _arch()
+    summarizer = StubAgent(
+        '{"consent_count": 2, "objection_count": 1, "themes": ["revenue-risk"]}',
+        role=AgentRole.SUMMARIZER, display_name="sum",
+    )
+    # Mediator captures every prompt it sees, returns a valid amendment.
+    seen_prompts: list[str] = []
+
+    def _mediator_respond(prompt: str, _ctx: str) -> str:
+        seen_prompts.append(prompt)
+        return (
+            '{"title":"amended","context":"c","change":"ch2","expected_impact":"i",'
+            '"safe_to_try_rationale":"s2"}'
+        )
+
+    mediator = StubAgent(
+        _mediator_respond,
+        role=AgentRole.INTEGRATIVE_MEDIATOR, display_name="med",
+    )
+    # Need >2 positions so the Summarizer fires (3 participants + DA = 4).
+    # One objects (triggers the amend path), the others consent.
+    p_obj = StubAgent(
+        '{"position": "objection", "criterion": "not-safe-to-try", "reason": "revenue"}',
+        role=AgentRole.PARTICIPANT, display_name="obj",
+    )
+    # The objector consents on the amended round so the cycle reaches adopted.
+    p_obj_q = [
+        '{"position": "objection", "criterion": "not-safe-to-try", "reason": "revenue"}',
+        '{"position": "consent"}',
+    ]
+    p_obj = StubAgent(lambda _p, _c: p_obj_q.pop(0), role=AgentRole.PARTICIPANT, display_name="obj")
+
+    run, events = _run(
+        arch, _da(),
+        participants=[
+            p_obj,
+            _participant("consent", name="c1"),
+            _participant("consent", name="c2"),
+        ],
+        mediator=mediator, summarizer=summarizer,
+    )
+    final = run_cycle(run)
+
+    assert final["outcome"] == "adopted"
+    # The digest event fired (>2 positions).
+    assert any(et == "digest" for et, _ in events)
+    # The Mediator was called at least once.
+    assert seen_prompts, "the Mediator was never called"
+    # The digest payload appears in the prompt the Mediator received.
+    amend_prompt = next(p for p in seen_prompts if "Round digest" in p)
+    assert "revenue-risk" in amend_prompt, (
+        "the Mediator's prompt must include the digest themes; pre-H8 it was "
+        "computed but never wired through"
+    )
+
+
 # ── S3 back-compat guard ──────────────────────────────────────────────────────
 
 
