@@ -121,6 +121,11 @@ def draft(state: CycleState, run: CycleRun) -> CycleState:
         # Reset per-round collections when a new proposal is drafted.
         "objections": [],
         "votes": [],
+        # H2: also reset the integration loop budget. A veto-reworked proposal is
+        # a NEW artefact and must get its full integration budget; LangGraph
+        # merges state, so without this the reworked proposal inherits the prior
+        # one's depleted counter (could already be at the cap → instant escalate).
+        "integration_rounds": 0,
     }
 
 

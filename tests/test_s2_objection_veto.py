@@ -199,3 +199,54 @@ def test_seeded_controversy_converges_or_escalates(da_json, loop_cap, expected):
     )
     final = run_cycle(run)
     assert final["outcome"] == expected
+
+
+# ── H2 regression: veto rework must reset integration_rounds ────────────────
+
+
+def test_veto_rework_resets_integration_rounds():
+    """H2 regression: when a veto forces a re-draft, the new proposal must start
+    with integration_rounds=0, not inherit the prior proposal's depleted counter.
+
+    Reproduces the original bug: the prior proposal runs through N integration
+    rounds; then a veto reworks it; LangGraph merges state so the reworked
+    proposal would inherit rounds=N. With a tight integration_loop_cap the
+    reworked proposal could instantly hit the cap and escalate — even though the
+    founder's objection was about the OLD proposal, not the reworked one.
+
+    Scenario: objection → 1 integration round → consent → founder veto → rework
+    → objection → integration round → consent → adopted. The reworked proposal
+    must be allowed its full budget; here it reaches adopted rather than
+    escalating on the carried-over counter.
+    """
+    arch = _arch()
+    mediator = _mediator()
+    # DA objects on the first proposal, consents on the amended version.
+    da_q = [
+        '{"criterion":"not-safe-to-try","reason":"r1"}',   # object on proposal v1
+        '{"objection": false}',                              # consent on v1-amended
+        '{"criterion":"not-safe-to-try","reason":"r2"}',   # object on reworked v2
+        '{"objection": false}',                              # consent on v2-amended
+    ]
+    da = StubAgent(lambda _p, _c: da_q.pop(0), role=AgentRole.DEVILS_ADVOCATE)
+    # Founder: consents on v1-amended AFTER the cycle consents, then on v2.
+    fq = ['{"veto": true, "reason": "rework it"}', '{"veto": false}']
+    founder = StubAgent(lambda _p, _c: fq.pop(0), role=AgentRole.FOUNDER)
+
+    # cap = 1 so the bug bites: v1's amendment sets integration_rounds=1;
+    # if v2 inherits it, v2's first integrate computes 1+1=2 > 1 → spurious
+    # escalation. With the fix, v2 resets to 0 and reaches adopted.
+    run, events = _run(
+        arch, da, mediator=mediator, founder=founder,
+        gov=GovernanceConfig(integration_loop_cap=1),
+    )
+    final = run_cycle(run)
+
+    # The reworked proposal (v2) must reach adopted, not escalate.
+    assert final["outcome"] == "adopted", (
+        f"reworked proposal inherited stale integration_rounds and misrouted; "
+        f"got {final['outcome']}"
+    )
+    assert final["veto_rounds"] == 1
+    # Two proposal drafts: v1 (then vetoed) and v2 (rework).
+    assert sum(1 for et, _ in events if et == "proposal-drafted") == 2
