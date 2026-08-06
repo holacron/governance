@@ -451,14 +451,29 @@ def record(state: CycleState, run: CycleRun) -> CycleState:
     """
     outcome = state.get("outcome") or "adopted"
     proposal_id = state["proposal"]["id"] if state.get("proposal") else None
+    # H3: sum AgentRef.weight per vote — NOT a head count. The fields are named
+    # weighted_*; consent_test already computes a real weighted sum for its own
+    # event. record() now matches that logic so the recorded Decision reflects
+    # the actual reputation-weighted consent/objection weight of the round.
+    # Consult abstain_counts_as so abstain-as-consent tallies consistently.
+    abstain_as = run.governance.abstain_counts_as
+    weighted_consent = 0.0
+    weighted_objection = 0.0
+    for v in state.get("votes", []):
+        w = float(v.get("cast_by", {}).get("weight", 1.0))
+        kind = v.get("kind")
+        if kind == "consent":
+            weighted_consent += w
+        elif kind == "objection":
+            weighted_objection += w
+        elif kind == "abstain" and abstain_as == "consent":
+            weighted_consent += w
     decision_payload = {
         "instance_id": run.instance_id,
         "proposal_id": proposal_id,
         "outcome": outcome,
-        "weighted_consent": float(len([v for v in state.get("votes", [])
-                                       if v.get("kind") == "consent"])),
-        "weighted_objection": float(len([v for v in state.get("votes", [])
-                                         if v.get("kind") == "objection"])),
+        "weighted_consent": weighted_consent,
+        "weighted_objection": weighted_objection,
         "founder_vetoed": bool(state.get("founder_vetoed", False)),
         "veto_overridden": bool(state.get("veto_overridden", False)),
     }

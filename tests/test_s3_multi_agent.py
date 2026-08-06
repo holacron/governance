@@ -75,6 +75,61 @@ def test_multiple_participants_take_positions():
     assert len(position_events) == 5
 
 
+# ── H3 regression: decision-recorded must carry a weighted tally ────────────
+
+
+def test_decision_recorded_carries_weighted_tally():
+    """H3 regression: the decision-recorded event's weighted_consent must be the
+    reputation-weighted sum, not a head count.
+
+    The pre-H3 record() used len([...]) — a count — for a field named
+    weighted_consent. consent_test already computed the real weighted sum for
+    its own consent-reached event; record() discarded it.
+
+    With weights 2.0 / 1.0 / 0.5 all consenting (+ DA at 1.0), the correct
+    weighted_consent is 4.5 — a head count would give 4.0.
+    """
+    run, events = _run(
+        _arch(), _da(),
+        participants=[
+            _participant("consent", name="heavy", weight=2.0),
+            _participant("consent", name="mid", weight=1.0),
+            _participant("consent", name="light", weight=0.5),
+        ],
+    )
+    final = run_cycle(run)
+    assert final["outcome"] == "adopted"
+
+    decision_ev = next(p for et, p in events if et == "decision-recorded")
+    # 2.0 + 1.0 + 0.5 (participants) + 1.0 (DA) = 4.5 weighted consent.
+    # A head-count bug would produce 4.0.
+    assert decision_ev["weighted_consent"] == 4.5, (
+        f"weighted_consent should be the weighted sum (4.5), not a head count; "
+        f"got {decision_ev['weighted_consent']}"
+    )
+
+
+def test_decision_recorded_weighted_tally_matches_consent_reached():
+    """H3: the decision-recorded tally must agree with consent-test's
+    consent-reached tally for the same round (consistency invariant)."""
+    run, events = _run(
+        _arch(), _da(),
+        participants=[
+            _participant("consent", name="a", weight=2.0),
+            _participant("consent", name="b", weight=1.5),
+        ],
+    )
+    final = run_cycle(run)
+    assert final["outcome"] == "adopted"
+
+    consent_ev = next(p for et, p in events if et == "consent-reached")
+    decision_ev = next(p for et, p in events if et == "decision-recorded")
+    assert decision_ev["weighted_consent"] == consent_ev["weighted_consent"], (
+        f"record() and consent_test disagree on weighted_consent: "
+        f"{decision_ev['weighted_consent']} vs {consent_ev['weighted_consent']}"
+    )
+
+
 # ── S3.4: weighted tally in the decision ─────────────────────────────────────
 
 
