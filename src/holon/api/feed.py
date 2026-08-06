@@ -31,16 +31,53 @@ class _RunFeed:
 
 @dataclass
 class FeedBroker:
-    """Process-wide registry of per-run live feeds (in-memory; single-node MVP)."""
+    """Process-wide registry of per-run live feeds (in-memory; single-node MVP).
+
+    Two-phase access prevents the SSE handler from clobbering the queue created
+    by the POST handler:
+
+      * POST ``/deliberations``  →  ``open()``   (creates the queue ONCE, before
+        the cycle thread starts, so no event is missed)
+      * GET  ``/deliberations/{run_id}/events``  →  ``subscribe()``  (returns the
+        *existing* queue; never overwrites it. Subscribing late still delivers
+        any events already buffered on it.)
+    """
 
     _feeds: dict[UUID, _RunFeed] = field(default_factory=dict)
 
     def open(self, run_id: UUID, loop: asyncio.AbstractEventLoop) -> asyncio.Queue:
-        """Create the feed for a run. Called from the async loop (request handler)
-        BEFORE the cycle thread starts, so the queue exists when events arrive."""
+        """Create the feed for a run. Called from the async loop (POST handler)
+        BEFORE the cycle thread starts, so the queue exists when events arrive.
+
+        Idempotent: if a feed is already open for ``run_id`` it is returned as-is
+        rather than replaced — protecting any buffered events.
+        """
+        existing = self._feeds.get(run_id)
+        if existing is not None:
+            return existing.queue
         q: asyncio.Queue = asyncio.Queue()
         self._feeds[run_id] = _RunFeed(queue=q, loop=loop)
         return q
+
+    def subscribe(self, run_id: UUID, loop: asyncio.AbstractEventLoop) -> asyncio.Queue:
+        """Get the existing queue for a run (GET/SSE handler).
+
+        Returns the queue created by ``open()`` — preserving every event pushed
+        between POST and GET. If no feed exists (e.g. the server restarted and
+        the cycle is mid-flight in a thread that outlived the broker), create one
+        so the stream still works; events emitted before this point are simply
+        not delivered (the ledger remains the durable record).
+        """
+        existing = self._feeds.get(run_id)
+        if existing is not None:
+            return existing.queue
+        q: asyncio.Queue = asyncio.Queue()
+        self._feeds[run_id] = _RunFeed(queue=q, loop=loop)
+        return q
+
+    def is_open(self, run_id: UUID) -> bool:
+        """Whether a feed has been opened for a run (used by tests/diagnostics)."""
+        return run_id in self._feeds
 
     def push(self, run_id: UUID, event_type: str, payload: dict[str, Any]) -> None:
         """Push an event for a run. Called from the cycle THREAD — must be

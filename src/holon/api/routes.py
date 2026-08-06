@@ -131,7 +131,9 @@ async def events(run_id: UUID, request: Request) -> EventSourceResponse:
     """SSE stream of the deliberation's events, live. Closes after the terminal
     decision-recorded event."""
     broker = request.app.state.broker
-    queue = broker.open(run_id, asyncio.get_running_loop())
+    # Subscribe to the EXISTING feed opened by POST — never overwrite it, or we
+    # would lose any events pushed between POST and GET.
+    queue = broker.subscribe(run_id, asyncio.get_running_loop())
 
     async def event_generator():
         try:
