@@ -16,7 +16,20 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from anthropic import Anthropic
+from anthropic import (
+    APIConnectionError,
+    Anthropic,
+    APITimeoutError,
+    InternalServerError,
+    OverloadedError,
+    RateLimitError,
+)
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from holon.config import RuntimeConfig
 
@@ -36,6 +49,28 @@ _MODEL_PRICING_USD_PER_MTOK: dict[str, tuple[float, float]] = {
 }
 _FALLBACK_PRICING = (1.00, 3.00)
 # Z.ai reports usage in tokens; the anthropic SDK exposes input/output token counts.
+
+# H5: resilience — retry transient provider failures (429 rate-limit, 5xx /
+# overload, connection + timeout) with exponential backoff. Non-retryable
+# errors (auth, validation, bad request) propagate immediately. tenacity is a
+# transitive dep via LangGraph, so this adds no new dependency.
+#   3 attempts, waits 2s -> 4s -> 8s (capped). A single transient blip no longer
+# aborts an entire deliberation.
+_RETRYABLE = (
+    RateLimitError,           # 429
+    OverloadedError,          # provider overload (5xx-family)
+    InternalServerError,      # 5xx
+    APIConnectionError,       # network/DNS
+    APITimeoutError,          # request timed out
+)
+_LLM_RETRY = retry(
+    retry=retry_if_exception_type(_RETRYABLE),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    reraise=True,
+)
+# Per-request timeout (seconds). Belt-and-braces alongside APITimeoutError retry.
+_LLM_TIMEOUT_S = 60
 
 
 class CostCapExceeded(RuntimeError):
@@ -134,12 +169,8 @@ class LLMGateway:
                 f"(cap ${self.config.harness_cost_cap_usd:.2f}). Aborting per §2.5."
             )
 
-        resp = self._client.messages.create(
-            model=chosen,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            system=full_system,
-            messages=[{"role": "user", "content": prompt}],
+        resp = self._call_llm(
+            chosen, full_system, prompt, max_tokens, temperature
         )
         text = self._extract_text(resp)
         in_tok = getattr(resp.usage, "input_tokens", 0)
@@ -158,6 +189,31 @@ class LLMGateway:
             text=text, model=chosen,
             input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost, cached=False,
         )
+
+    # ── LLM transport (H5: retry + timeout) ──────────────────────────────────
+
+    def _call_llm(
+        self, model: str, system: str, prompt: str,
+        max_tokens: int, temperature: float,
+    ):
+        """Single retry-wrapped, timeout-bound messages.create call.
+
+        Retries transient failures (429/5xx/overload/conn/timeout) with exp
+        backoff (3 attempts, 2–8s). Non-retryable errors propagate immediately.
+        Bound to a 60s per-request timeout so a hung provider connection can't
+        stall the deliberation indefinitely.
+        """
+        @_LLM_RETRY
+        def _create():
+            return self._client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=_LLM_TIMEOUT_S,
+            )
+        return _create()
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
