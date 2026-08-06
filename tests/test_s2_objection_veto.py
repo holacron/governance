@@ -132,6 +132,59 @@ def test_veto_round_cap_proceeds_anyway():
     assert "veto-override" in event_types
 
 
+# ── H4 regression: veto without a reason still vetoes (surfaced, not dropped) ──
+
+
+def test_veto_without_reason_still_vetoes():
+    """H4 regression: a founder returning {"veto": true} with no reason must
+    STILL count as a veto (the founder's stated intent), with the missing reason
+    surfaced as "(no reason provided)" and a reason_missing=True flag.
+
+    Pre-H4 the AND of (veto) and (reason) silently treated this as no-veto,
+    overriding the founder's intent invisibly. Governance requires a reason to
+    be GIVEN; the correct response to a missing one is to surface it in the
+    ledger, not to silently drop the veto.
+    """
+    arch = _arch()
+    da = _da()
+    # Founder vetoes once WITHOUT a reason, then doesn't veto on rework.
+    fq = ['{"veto": true}', '{"veto": false}']
+    founder = StubAgent(lambda _p, _c: fq.pop(0), role=AgentRole.FOUNDER)
+
+    run, events = _run(arch, da, founder=founder)
+    final = run_cycle(run)
+
+    # The veto was honoured — a rework happened.
+    assert final["outcome"] == "adopted"
+    assert final["veto_rounds"] == 1
+    event_types = [et for et, _ in events]
+    assert "founder-veto" in event_types
+    # Two drafts confirm the veto forced a rework (not silently dropped).
+    assert event_types.count("proposal-drafted") == 2
+
+    veto_payload = next(p for et, p in events if et == "founder-veto")
+    # The missing reason is surfaced, not swallowed.
+    assert veto_payload["reason"] == "(no reason provided)"
+    assert veto_payload["reason_missing"] is True
+
+
+def test_veto_with_empty_reason_still_vetoes():
+    """H4: an explicit empty-string reason behaves the same as a missing one."""
+    arch = _arch()
+    da = _da()
+    fq = ['{"veto": true, "reason": "   "}', '{"veto": false}']
+    founder = StubAgent(lambda _p, _c: fq.pop(0), role=AgentRole.FOUNDER)
+
+    run, events = _run(arch, da, founder=founder)
+    final = run_cycle(run)
+
+    assert final["outcome"] == "adopted"
+    assert final["veto_rounds"] == 1
+    veto_payload = next(p for et, p in events if et == "founder-veto")
+    assert veto_payload["reason"] == "(no reason provided)"
+    assert veto_payload["reason_missing"] is True
+
+
 # ── S2.5: consent_test objection_id wiring ───────────────────────────────────
 
 

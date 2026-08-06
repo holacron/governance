@@ -399,22 +399,35 @@ def veto_window(state: CycleState, run: CycleRun) -> CycleState:
     )
     text = founder.respond(prompt, max_tokens=300, temperature=0.2)
     payload = _extract_json(text)
-    vetoed = bool(payload.get("veto", False)) and bool(payload.get("reason", "").strip())
+    wants_veto = bool(payload.get("veto", False))
 
-    if not vetoed:
-        # Explicitly clear veto flags: LangGraph merges state, so a stale True
-        # from a prior round must be overwritten or route_after_veto misroutes.
+    if not wants_veto:
+        # No veto: explicitly clear veto flags. LangGraph merges state, so a
+        # stale True from a prior round must be overwritten or route_after_veto
+        # misroutes.
         return {
             "state": "founder-veto-window",
             "founder_vetoed": False,
             "veto_overridden": False,
         }
 
+    # H4: the governance rule is reason-given, but the correct response to a
+    # MISSING reason is to SURFACE it (visible in the ledger), not to silently
+    # override the founder's stated intent. A veto without a reason still counts
+    # as a veto — flagged so a missing reason is never silently swallowed.
+    reason = payload.get("reason", "").strip()
+    if not reason:
+        reason = "(no reason provided)"
+        missing_reason = True
+    else:
+        missing_reason = False
+
     # Veto with reason: emit + increment.
     veto_rounds = state.get("veto_rounds", 0) + 1
     _emit(run, "founder-veto", {
         "proposal_id": proposal_payload["id"],
-        "reason": payload.get("reason", ""),
+        "reason": reason,
+        "reason_missing": missing_reason,
         "veto_rounds": veto_rounds,
     })
 
@@ -438,7 +451,8 @@ def veto_window(state: CycleState, run: CycleRun) -> CycleState:
         "veto_rounds": veto_rounds,
         "founder_vetoed": True,
         # A pending veto reason could seed the next tension; carried in state.
-        "veto_reason": payload.get("reason", ""),
+        # Uses the surfaced reason (flagged if the founder omitted one).
+        "veto_reason": reason,
     }
 
 
