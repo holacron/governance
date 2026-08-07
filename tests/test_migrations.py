@@ -36,6 +36,10 @@ _EXPECTED_TABLES = {
 _EXPECTED_AGENT_REGISTRY_COLUMNS = {
     "owner", "capability", "model", "endpoint", "api_key_enc",
 }
+# The 6 S5 backlog columns 0003 must add to tension.
+_EXPECTED_TENSION_COLUMNS = {
+    "status", "priority", "triage", "triaged_by", "triaged_at", "decision_id",
+}
 
 
 def _maintenance_url(db_url: str) -> str:
@@ -96,6 +100,11 @@ def test_apply_migrations_creates_full_schema_on_fresh_db():
             assert _EXPECTED_AGENT_REGISTRY_COLUMNS <= cols, (
                 f"missing agent_registry columns: "
                 f"{_EXPECTED_AGENT_REGISTRY_COLUMNS - cols}"
+            )
+            # The 6 S5 backlog columns exist on tension.
+            tension_cols = {c["name"] for c in insp.get_columns("tension")}
+            assert _EXPECTED_TENSION_COLUMNS <= tension_cols, (
+                f"missing tension columns: {_EXPECTED_TENSION_COLUMNS - tension_cols}"
             )
         finally:
             eng.dispose()

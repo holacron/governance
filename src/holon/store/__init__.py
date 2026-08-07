@@ -111,6 +111,13 @@ class TensionRow(SQLModel, table=True):
     title: str
     description: str
     created_at: datetime = Field(default_factory=_now)
+    # S5 backlog columns.
+    status: str = Field(default="open", index=True)  # open|triaged|scheduled|in-deliberation|decided|parked
+    priority: int = Field(default=50, index=True)  # lower = higher priority (1..100)
+    triage: str | None = None  # JSON: {on_domain, materiality, duplicate_of, notes}
+    triaged_by: UUID | None = Field(default=None, foreign_key="agent_registry.agent_id")
+    triaged_at: datetime | None = None
+    decision_id: UUID | None = Field(default=None, foreign_key="decision.id")
 
 
 class ProposalRow(SQLModel, table=True):

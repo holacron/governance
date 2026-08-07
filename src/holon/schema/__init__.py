@@ -41,6 +41,7 @@ class AgentRole(StrEnum):
     INTEGRATIVE_MEDIATOR = "integrative-mediator"
     JUDGMENT_SYNTHESIZER = "judgment-synthesizer"
     SUMMARIZER = "summarizer"
+    TRIAGE_GUARDIAN = "triage-guardian"
     ETHICS_SAFETY_GUARDIAN = "ethics-safety-guardian"
     PROJECT_MANAGER = "project-manager"
     REPUTATION_STEWARD = "reputation-steward"
@@ -48,6 +49,14 @@ class AgentRole(StrEnum):
     # Participants
     PARTICIPANT = "participant"
     FOUNDER = "founder"
+
+
+# S5: the backlog lifecycle a Tension moves through. `open` (just submitted) →
+# `triaged` (Triage Guardian assessed) → `scheduled` (popped for deliberation) →
+# `in-deliberation` → `decided` (or `parked`: held back without deliberation).
+TensionStatus = Literal[
+    "open", "triaged", "scheduled", "in-deliberation", "decided", "parked"
+]
 
 
 class ConsentState(StrEnum):
@@ -116,7 +125,14 @@ class Agent(Protocol):
 
 
 class Tension(BaseModel):
-    """ROADMAP §3 step 1 — the felt gap between what is and what could be."""
+    """ROADMAP §3 step 1 — the felt gap between what is and what could be.
+
+    The trigger for any consent cycle. In S5 it also carries backlog lifecycle
+    state (status/priority) and an optional triage assessment, so a Tension is
+    both the cycle input AND the queue item. The optional fields default to keep
+    every existing call site (which builds a Tension for immediate deliberation)
+    back-compatible.
+    """
 
     id: UUID = Field(default_factory=_uuid)
     instance_id: str
@@ -124,6 +140,12 @@ class Tension(BaseModel):
     title: str
     description: str
     created_at: datetime = Field(default_factory=_utcnow)
+    # S5 backlog fields (optional; defaults preserve back-compat for the
+    # immediate-deliberation path used by S0-S4).
+    status: TensionStatus = "open"
+    priority: int = 50
+    triage: dict | None = None
+    decision_id: UUID | None = None
 
 
 class Proposal(BaseModel):
@@ -207,6 +229,7 @@ class LedgerEvent(BaseModel):
     sequence: int  # monotonic per-instance; makes the ledger replayable
     event_type: Literal[
         "tension-raised",
+        "tension-triaged",
         "proposal-drafted",
         "clarifying-question",
         "reaction",
