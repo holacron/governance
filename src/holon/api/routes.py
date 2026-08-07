@@ -291,14 +291,23 @@ async def triage(instance_id: str, tension_id: UUID) -> JSONResponse:
 
 
 @router.post("/instances/{instance_id}/deliberations")
-async def start_deliberation(instance_id: str, request: Request) -> JSONResponse:
-    """Start a consent cycle on the instance's first_decision. Returns a run_id
-    whose event stream is available at GET /deliberations/{run_id}/events."""
+async def start_deliberation(
+    instance_id: str, request: Request, tension_id: UUID | None = None,
+) -> JSONResponse:
+    """Start a consent cycle. Returns a run_id whose event stream is at
+    GET /deliberations/{run_id}/events.
+
+    Tension source (S5): if ?tension_id=<uuid> is given, deliberate that
+    specific backlog tension; otherwise the cycle pops the next backlog tension
+    (or falls back to first_decision if the backlog is empty).
+    """
     broker = request.app.state.broker
     run_id = uuid4()
     # Open the feed BEFORE the thread starts so events aren't missed.
     broker.open(run_id, asyncio.get_running_loop())
-    run_deliberation_live(instance_id=instance_id, run_id=run_id, broker=broker)
+    run_deliberation_live(
+        instance_id=instance_id, run_id=run_id, broker=broker, tension_id=tension_id,
+    )
     return JSONResponse({"run_id": str(run_id), "events_url": f"/deliberations/{run_id}/events"},
                         status_code=202)
 

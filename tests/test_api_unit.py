@@ -132,6 +132,41 @@ def test_list_tensions_filtered_by_status(client):
     assert r2.json()["tensions"] == []
 
 
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_deliberation_targets_specific_tension(client):
+    """POST .../deliberations?tension_id=<uuid> starts a cycle on that specific
+    backlog tension (not the first_decision fallback). The tension transitions
+    to 'in-deliberation' promptly, before the (slow) cycle completes."""
+    import time
+    from uuid import uuid4
+
+    # Submit a tension to target.
+    sub = client.post("/instances/kimberim/tensions", json={
+        "title": "Target tension for deliberation", "description": "deliberate me",
+    })
+    tension_id = sub.json()["tension_id"]
+
+    # Start a deliberation targeting it. The worker runs in a background thread.
+    r = client.post(f"/instances/kimberim/deliberations?tension_id={tension_id}")
+    assert r.status_code == 202
+    assert r.json()["run_id"]
+
+    # The worker marks the tension 'in-deliberation' early (before the LLM
+    # cycle). Poll briefly for the transition.
+    deadline = time.time() + 10
+    status = "open"
+    while time.time() < deadline:
+        det = client.get(f"/instances/kimberim/tensions/{tension_id}")
+        status = det.json()["status"]
+        if status in ("in-deliberation", "scheduled", "decided"):
+            break
+        time.sleep(0.3)
+
+    assert status in ("in-deliberation", "scheduled", "decided"), (
+        f"targeted tension should have left 'open'; got {status}"
+    )
+
+
 # ── SSE live feed (stub-driven; no LLM) ──────────────────────────────────────
 
 

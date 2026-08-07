@@ -30,8 +30,15 @@ from holon.agents import (
 from holon.api.feed import FeedBroker
 from holon.config import InstanceConfig, RuntimeConfig, load_instance_config, load_runtime_config
 from holon.cycle import CycleRun, run_cycle
-from holon.schema import AgentRole, Tension
-from holon.store import append_ledger_event, list_agents, make_engine
+from holon.schema import AgentRole, AgentRef, Tension
+from holon.store import (
+    append_ledger_event,
+    get_tension,
+    list_agents,
+    make_engine,
+    mark_in_deliberation,
+    next_tension,
+)
 
 log = logging.getLogger(__name__)
 
@@ -63,16 +70,21 @@ def run_deliberation_live(
     broker: FeedBroker,
     config: RuntimeConfig | None = None,
     instance: InstanceConfig | None = None,
+    tension_id: UUID | None = None,
 ) -> threading.Thread:
-    """Start a deliberation for the instance's first_decision in a background
-    thread. Returns the thread (already started).
+    """Start a deliberation in a background thread. Returns the thread (started).
+
+    Tension source (S5 generalization):
+      1. If tension_id is given, deliberate that specific backlog tension.
+      2. Else if the backlog is non-empty, pop the next triaged/open tension.
+      3. Else fall back to the instance's first_decision (S0-S4 back-compat —
+         preserves every existing live test, which has no backlog).
 
     Each cycle event is persisted to Postgres AND pushed to the broker for the
     SSE stream. On completion (or error) the feed is closed.
     """
     config = config or load_runtime_config()
     instance = instance or load_instance_config(instance_id)
-    assert instance.first_decision is not None, "instance has no first_decision"
 
     def _worker() -> None:
         eng = make_engine(config.database_url)
@@ -113,12 +125,45 @@ def run_deliberation_live(
             if a.display_name
         ]
 
-        tension = Tension(
-            instance_id=instance_id,
-            raised_by=architect.ref,
-            title=instance.first_decision.title,
-            description=instance.first_decision.summary.strip(),
-        )
+        # ── Resolve the tension to deliberate (S5 generalization) ──────────
+        # Priority: explicit tension_id > next backlog tension > first_decision
+        # fallback (back-compat for S0-S4, which have no backlog).
+        tension = None
+        with SMSession(eng) as s:
+            trow = None
+            if tension_id is not None:
+                trow = get_tension(s, tension_id=tension_id)
+            else:
+                trow = next_tension(s, instance_id=instance_id)
+            if trow is not None:
+                # Build the Tension model from the backlog row + mark it active.
+                tension = Tension(
+                    id=trow.id,
+                    instance_id=trow.instance_id,
+                    raised_by=AgentRef(
+                        agent_id=trow.raised_by, instance_id=trow.instance_id,
+                        role=AgentRole.PARTICIPANT,
+                    ),
+                    title=trow.title,
+                    description=trow.description,
+                    status=trow.status,
+                    priority=trow.priority,
+                )
+                mark_in_deliberation(s, tension_id=trow.id)
+                s.commit()
+
+        if tension is None:
+            # Fallback: the instance's seeded first_decision (S0-S4 back-compat).
+            if instance.first_decision is None:
+                log.error("no backlog tension and no first_decision for %s", instance_id)
+                broker.close(run_id)
+                return
+            tension = Tension(
+                instance_id=instance_id,
+                raised_by=architect.ref,
+                title=instance.first_decision.title,
+                description=instance.first_decision.summary.strip(),
+            )
 
         run = CycleRun(
             instance_id=instance_id,
