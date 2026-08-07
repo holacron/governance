@@ -279,6 +279,152 @@ def list_agents(session: SMSession, *, instance_id: str) -> list[AgentRegistryRo
     return list(session.exec(stmt).all())
 
 
+# ── Tension backlog CRUD (S5) ────────────────────────────────────────────────
+
+
+def raise_tension(
+    session: SMSession,
+    *,
+    instance_id: str,
+    raised_by_agent_id: UUID,
+    title: str,
+    description: str,
+    priority: int = 50,
+) -> TensionRow:
+    """Create a new tension in the backlog (status='open').
+
+    Also appends a `tension-raised` ledger event — activating the event_type
+    that has been in the enum since S0 but never emitted. The caller commits.
+    """
+    row = TensionRow(
+        instance_id=instance_id,
+        raised_by=raised_by_agent_id,
+        title=title,
+        description=description,
+        status="open",
+        priority=priority,
+    )
+    session.add(row)
+    session.flush()
+    append_ledger_event(
+        session,
+        instance_id=instance_id,
+        event_type="tension-raised",
+        payload={
+            "tension_id": str(row.id),
+            "title": title,
+            "description": description,
+            "raised_by": str(raised_by_agent_id),
+            "priority": priority,
+        },
+    )
+    return row
+
+
+def get_tension(session: SMSession, *, tension_id: UUID) -> TensionRow | None:
+    """Fetch a single tension by id (any status)."""
+    stmt = select(TensionRow).where(TensionRow.id == tension_id)
+    return session.exec(stmt).first()
+
+
+def list_backlog(
+    session: SMSession, *, instance_id: str, status: str | None = None,
+) -> list[TensionRow]:
+    """List tensions for an instance, optionally filtered by status.
+
+    Ordered by priority ascending (lower number = higher priority), then
+    created_at (oldest first) for a stable, fair queue.
+    """
+    stmt = select(TensionRow).where(TensionRow.instance_id == instance_id)
+    if status is not None:
+        stmt = stmt.where(TensionRow.status == status)
+    stmt = stmt.order_by(TensionRow.priority.asc(), TensionRow.created_at.asc())
+    return list(session.exec(stmt).all())
+
+
+def triage_tension(
+    session: SMSession,
+    *,
+    tension_id: UUID,
+    triaged_by_agent_id: UUID,
+    triage: dict[str, Any],
+) -> TensionRow | None:
+    """Record a Triage Guardian's assessment and advance status to 'triaged'.
+
+    `triage` is the structured assessment: {on_domain, materiality,
+    duplicate_of, notes}. Also appends a `tension-triaged` ledger event so the
+    assessment is part of the fully-public record.
+    """
+    row = get_tension(session, tension_id=tension_id)
+    if row is None:
+        return None
+    row.triage = json.dumps(triage, default=str)
+    row.triaged_by = triaged_by_agent_id
+    row.triaged_at = datetime.now(UTC)
+    row.status = "triaged"
+    session.add(row)
+    session.flush()
+    append_ledger_event(
+        session,
+        instance_id=row.instance_id,
+        event_type="tension-triaged",
+        payload={"tension_id": str(tension_id), "triage": triage},
+    )
+    return row
+
+
+def next_tension(session: SMSession, *, instance_id: str) -> TensionRow | None:
+    """Pop the highest-priority triaged tension for deliberation.
+
+    Prefers 'triaged' tensions; falls back to 'open' (untriaged) if none are
+    triaged yet, so the system degrades gracefully when triage is skipped.
+    Marks the chosen tension 'scheduled'. Returns None if the backlog is empty.
+    """
+    for preferred_status in ("triaged", "open"):
+        stmt = (
+            select(TensionRow)
+            .where(TensionRow.instance_id == instance_id)
+            .where(TensionRow.status == preferred_status)
+            .order_by(TensionRow.priority.asc(), TensionRow.created_at.asc())
+        )
+        row = session.exec(stmt).first()
+        if row is not None:
+            row.status = "scheduled"
+            session.add(row)
+            session.flush()
+            return row
+    return None
+
+
+def mark_in_deliberation(session: SMSession, *, tension_id: UUID) -> TensionRow | None:
+    """Mark a tension as actively under deliberation."""
+    row = get_tension(session, tension_id=tension_id)
+    if row is None:
+        return None
+    row.status = "in-deliberation"
+    session.add(row)
+    session.flush()
+    return row
+
+
+def mark_decided(
+    session: SMSession, *, tension_id: UUID, decision_id: UUID,
+) -> TensionRow | None:
+    """Close the loop: link a tension to its resulting Decision and mark decided.
+
+    This is what makes dedup a real query — a future triage can ask 'is there a
+    decided tension like this?' and get a definitive answer via decision_id.
+    """
+    row = get_tension(session, tension_id=tension_id)
+    if row is None:
+        return None
+    row.status = "decided"
+    row.decision_id = decision_id
+    session.add(row)
+    session.flush()
+    return row
+
+
 __all__ = [
     "ALL_TABLES",
     "AgentRegistryRow",
@@ -291,7 +437,14 @@ __all__ = [
     "VoteRow",
     "append_ledger_event",
     "apply_migrations",
+    "get_tension",
     "list_agents",
+    "list_backlog",
     "make_engine",
+    "mark_decided",
+    "mark_in_deliberation",
+    "next_tension",
+    "raise_tension",
     "register_agent",
+    "triage_tension",
 ]
