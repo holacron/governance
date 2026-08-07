@@ -68,6 +68,70 @@ def test_register_and_list_agent(client):
     assert "Grid Stability Agent" in names
 
 
+# ── Tension intake & backlog (S5) ────────────────────────────────────────────
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_submit_and_list_tension(client):
+    """POST a tension → it appears in the backlog list."""
+    r = client.post("/instances/kimberim/tensions", json={
+        "title": "Compute heat load on water supply",
+        "description": "On-site compute raises cooling water demand in an arid region.",
+    })
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "open"
+    assert body["priority"] == 50
+    tension_id = body["tension_id"]
+
+    # It appears in the full list.
+    r2 = client.get("/instances/kimberim/tensions")
+    assert r2.status_code == 200
+    titles = [t["title"] for t in r2.json()["tensions"]]
+    assert "Compute heat load on water supply" in titles
+
+    # Detail endpoint returns it with the right fields.
+    r3 = client.get(f"/instances/kimberim/tensions/{tension_id}")
+    assert r3.status_code == 200
+    detail = r3.json()
+    assert detail["status"] == "open"
+    assert detail["triage"] is None  # not yet triaged
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_submit_tension_with_explicit_priority(client):
+    """A submitted tension honours the priority field."""
+    r = client.post("/instances/kimberim/tensions", json={
+        "title": "Urgent grid-stability review",
+        "description": "Needs attention now.",
+        "priority": 10,
+    })
+    assert r.status_code == 201
+    assert r.json()["priority"] == 10
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_get_tension_unknown_returns_404(client):
+    """A non-existent tension_id returns 404, not a 500."""
+    from uuid import uuid4
+    r = client.get(f"/instances/kimberim/tensions/{uuid4()}")
+    assert r.status_code == 404
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_list_tensions_filtered_by_status(client):
+    """The status query param filters the backlog."""
+    client.post("/instances/kimberim/tensions", json={
+        "title": "open one", "description": "d",
+    })
+    r = client.get("/instances/kimberim/tensions?status=open")
+    assert r.status_code == 200
+    assert all(t["status"] == "open" for t in r.json()["tensions"])
+    # No decided tensions yet.
+    r2 = client.get("/instances/kimberim/tensions?status=decided")
+    assert r2.json()["tensions"] == []
+
+
 # ── SSE live feed (stub-driven; no LLM) ──────────────────────────────────────
 
 

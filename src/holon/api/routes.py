@@ -1,9 +1,12 @@
-"""Holon engage API routes (S4): registration, deliberation, SSE live feed.
+"""Holon engage API routes (S4+S5): registration, tension intake, deliberation.
 
 REST:
   POST /instances/{id}/agents        — register an agent ("Welcome an Agent")
   GET  /instances/{id}/agents        — list registered agents
-  POST /instances/{id}/deliberations — start a cycle on first_decision
+  POST /instances/{id}/tensions      — submit a tension to the backlog (S5)
+  GET  /instances/{id}/tensions      — list the backlog (S5)
+  GET  /instances/{id}/tensions/{tid} — single tension detail (S5)
+  POST /instances/{id}/deliberations — start a cycle (next backlog tension or first_decision)
   GET  /instances/{id}               — instance summary (branding, first_decision)
 SSE:
   GET  /deliberations/{run_id}/events — live deliberation event stream
@@ -24,7 +27,14 @@ from sse_starlette.sse import EventSourceResponse
 from holon.api.feed import CLOSE
 from holon.api.live import run_deliberation_live
 from holon.config import load_instance_config, load_runtime_config
-from holon.store import list_agents, make_engine, register_agent
+from holon.store import (
+    get_tension,
+    list_agents,
+    list_backlog,
+    make_engine,
+    raise_tension,
+    register_agent,
+)
 
 router = APIRouter()
 
@@ -49,6 +59,15 @@ class AgentOut(BaseModel):
     owner: str
     capability: str
     model: str
+
+
+class TensionSubmission(BaseModel):
+    """The tension-intake form payload (S5)."""
+
+    title: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1)
+    raised_by: UUID | None = None  # agent_id; defaults to the instance founder
+    priority: int = 50
 
 
 # ── Instance ──────────────────────────────────────────────────────────────────
@@ -108,6 +127,103 @@ async def agents(instance_id: str) -> JSONResponse:
                  capability=r.capability, model=r.model).model_dump(mode="json")
         for r in rows
     ]})
+
+
+# ── Tension intake & backlog (S5) ────────────────────────────────────────────
+
+
+def _ensure_founder_agent(s: SMSession, instance_id: str):
+    """Get or create the founder's agent_registry row for this instance.
+
+    A Tension.raised_by is a FK to agent_registry, so a submitter needs an
+    agent_id. When none is given, we attribute the tension to the instance
+    founder (the holacracy default: anyone can raise, the founder sponsors).
+    """
+    ic = load_instance_config(instance_id)
+    founder_name = ic.founder.name if ic.founder else "Founder"
+    # Reuse an existing founder agent if one exists for this instance.
+    existing = [a for a in list_agents(s, instance_id=instance_id)
+                if a.display_name == founder_name and a.role == "founder"]
+    if existing:
+        return existing[0]
+    row = register_agent(
+        s, instance_id=instance_id, display_name=founder_name,
+        role="founder", capability="Instance founder",
+    )
+    s.flush()
+    return row
+
+
+def _tension_out(r) -> dict:
+    """Serialize a TensionRow for the API (with triage parsed if present)."""
+    import json as _json
+    triage = None
+    if r.triage:
+        try:
+            triage = _json.loads(r.triage)
+        except (ValueError, TypeError):
+            triage = None
+    return {
+        "tension_id": str(r.id),
+        "instance_id": r.instance_id,
+        "title": r.title,
+        "description": r.description,
+        "status": r.status,
+        "priority": r.priority,
+        "raised_by": str(r.raised_by),
+        "triage": triage,
+        "decision_id": str(r.decision_id) if r.decision_id else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+@router.post("/instances/{instance_id}/tensions")
+async def submit_tension(instance_id: str, body: TensionSubmission) -> JSONResponse:
+    """Submit a tension to the instance backlog. Returns 201 with the new id.
+
+    Anyone can raise (holacracy: 'any participant or internal role files a
+    structured tension'). If raised_by is omitted, the tension is attributed to
+    the instance founder. ABAC submission gates come in the next sprint.
+    """
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        if body.raised_by is not None:
+            raised_by = body.raised_by
+        else:
+            founder = _ensure_founder_agent(s, instance_id)
+            raised_by = founder.agent_id
+        row = raise_tension(
+            s, instance_id=instance_id, raised_by_agent_id=raised_by,
+            title=body.title, description=body.description, priority=body.priority,
+        )
+        s.commit()
+        return JSONResponse(
+            {"tension_id": str(row.id), "status": row.status, "priority": row.priority},
+            status_code=201,
+        )
+
+
+@router.get("/instances/{instance_id}/tensions")
+async def list_tensions(instance_id: str, status: str | None = None) -> JSONResponse:
+    """List the instance backlog, optionally filtered by status."""
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        rows = list_backlog(s, instance_id=instance_id, status=status)
+    return JSONResponse({"tensions": [_tension_out(r) for r in rows]})
+
+
+@router.get("/instances/{instance_id}/tensions/{tension_id}")
+async def get_tension_detail(instance_id: str, tension_id: UUID) -> JSONResponse:
+    """Single tension detail including triage assessment + linked decision."""
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        row = get_tension(s, tension_id=tension_id)
+        if row is None or row.instance_id != instance_id:
+            return JSONResponse({"error": "tension not found"}, status_code=404)
+        return JSONResponse(_tension_out(row))
 
 
 # ── Deliberation ──────────────────────────────────────────────────────────────
