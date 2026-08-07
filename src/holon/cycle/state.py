@@ -24,6 +24,12 @@ from holon.schema import AgentRef, ConsentState, Tension
 # but lets unit tests inject an in-memory capture instead of a DB session.
 LedgerSink = Callable[[str, dict], None]
 
+# S5: called once by record() with the finalized decision payload (incl. the
+# tension_id + proposal_id) so the live path can write a DecisionRow and
+# mark the source tension decided — closing the backlog loop. Optional; when
+# None, the decision lives only in the ledger (unit-test / DB-free path).
+OnDecision = Callable[[dict], None]
+
 
 class CycleState(TypedDict, total=False):
     """The pure-data state flowing through the LangGraph StateGraph.
@@ -89,6 +95,9 @@ class CycleRun:
     # Ledger sink: signature (event_type, payload_dict) -> None. When None,
     # events are only captured in state (no DB write) — used by unit tests.
     ledger_sink: LedgerSink | None = None
+    # S5: optional callback fired by record() with the finalized decision payload
+    # so the live path can persist a DecisionRow + mark the tension decided.
+    on_decision: OnDecision | None = None
     # Initial state deltas accumulate here for the graph's first invocation.
     seed: CycleState = field(default_factory=dict)  # type: ignore[assignment]
 
@@ -121,4 +130,4 @@ def empty_state(instance_id: str, tension: Tension) -> CycleState:
     return CycleRun(instance_id=instance_id, tension=tension).seed
 
 
-__all__ = ["CycleRun", "CycleState", "empty_state"]
+__all__ = ["CycleRun", "CycleState", "LedgerSink", "OnDecision", "empty_state"]

@@ -32,10 +32,13 @@ from holon.config import InstanceConfig, RuntimeConfig, load_instance_config, lo
 from holon.cycle import CycleRun, run_cycle
 from holon.schema import AgentRole, AgentRef, Tension
 from holon.store import (
+    DecisionRow,
+    ProposalRow,
     append_ledger_event,
     get_tension,
     list_agents,
     make_engine,
+    mark_decided,
     mark_in_deliberation,
     next_tension,
 )
@@ -165,6 +168,46 @@ def run_deliberation_live(
                 description=instance.first_decision.summary.strip(),
             )
 
+        # S5: close the loop on decision — persist a DecisionRow (+ the
+        # ProposalRow it references, since record() emits only ledger events)
+        # and mark the source tension 'decided'. This is what makes dedup real
+        # and the backlog self-cleaning.
+        def on_decision(payload: dict) -> None:
+            try:
+                with SMSession(eng) as s:
+                    # The proposal row must exist for the decision FK. The
+                    # proposal lives in the ledger as a proposal-drafted event,
+                    # but the projection table may not have it — upsert a row.
+                    prop_id = payload.get("proposal_id")
+                    if prop_id is not None:
+                        existing = s.get(ProposalRow, prop_id)
+                        if existing is None:
+                            s.add(ProposalRow(
+                                id=prop_id, instance_id=instance_id,
+                                tension_id=payload.get("tension_id") or tension.id,
+                                drafted_by=architect.ref.agent_id,
+                                title=tension.title,
+                            ))
+                            s.flush()
+                    decision = DecisionRow(
+                        instance_id=instance_id,
+                        proposal_id=prop_id,
+                        outcome=payload.get("outcome", "adopted"),
+                        weighted_consent=payload.get("weighted_consent", 0.0),
+                        weighted_objection=payload.get("weighted_objection", 0.0),
+                        founder_vetoed=payload.get("founder_vetoed", False),
+                        veto_overridden=payload.get("veto_overridden", False),
+                    )
+                    s.add(decision)
+                    s.flush()
+                    # Link the tension to its decision (closes dedup).
+                    tid = payload.get("tension_id") or tension.id
+                    if tid is not None:
+                        mark_decided(s, tension_id=tid, decision_id=decision.id)
+                    s.commit()
+            except Exception as e:  # noqa: BLE001
+                log.warning("on_decision persistence failed (non-fatal): %s", e)
+
         run = CycleRun(
             instance_id=instance_id,
             tension=tension,
@@ -178,6 +221,7 @@ def run_deliberation_live(
             founder=founder,
             participant_agents=participants,
             ledger_sink=sink,
+            on_decision=on_decision,
         )
         try:
             final = run_cycle(run)

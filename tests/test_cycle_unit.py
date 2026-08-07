@@ -134,3 +134,46 @@ def test_governance_defaults_match_adr():
     assert g.veto_round_cap == 3
     assert g.override_threshold == 0.75
     assert g.abstain_counts_as == "neither"
+
+
+# ── S5: on_decision callback closes the backlog loop ────────────────────────
+
+
+def test_on_decision_fired_with_tension_id():
+    """record() fires the on_decision callback once with the finalized decision
+    payload, including the source tension_id so the live path can link the
+    Decision back to its Tension (closing the dedup loop)."""
+    captured: list[dict] = []
+
+    def on_decision(payload: dict) -> None:
+        captured.append(payload)
+
+    tension = Tension(
+        instance_id=INSTANCE, raised_by=_arch(_PROP).ref, title="t", description="d",
+    )
+    run = CycleRun(
+        instance_id=INSTANCE, tension=tension, participants=[tension.raised_by],
+        governance=GovernanceConfig(),
+        proposal_architect=_arch(_PROP), devils_advocate=_da('{"objection": false}'),
+        ledger_sink=lambda _et, _p: None,
+        on_decision=on_decision,
+    )
+    final = run_cycle(run)
+    assert final["outcome"] == "adopted"
+
+    # The callback fired exactly once with the decision payload.
+    assert len(captured) == 1
+    payload = captured[0]
+    assert payload["outcome"] == "adopted"
+    assert payload["tension_id"] == str(tension.id)
+    assert payload["proposal_id"] is not None
+    assert payload["weighted_consent"] >= 1.0
+
+
+def test_on_decision_none_is_safe():
+    """When on_decision is None (the default), record() must not crash — this
+    is the unit-test / DB-free path."""
+    run, _events = _run(_arch(_PROP), _da('{"objection": false}'))
+    # on_decision defaults to None; cycle must complete normally.
+    final = run_cycle(run)
+    assert final["outcome"] == "adopted"

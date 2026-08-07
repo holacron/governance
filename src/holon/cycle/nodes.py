@@ -476,6 +476,7 @@ def record(state: CycleState, run: CycleRun) -> CycleState:
             weighted_consent += w
     decision_payload = {
         "instance_id": run.instance_id,
+        "tension_id": state.get("tension", {}).get("id"),
         "proposal_id": proposal_id,
         "outcome": outcome,
         "weighted_consent": weighted_consent,
@@ -484,6 +485,13 @@ def record(state: CycleState, run: CycleRun) -> CycleState:
         "veto_overridden": bool(state.get("veto_overridden", False)),
     }
     _emit(run, "decision-recorded", decision_payload)
+    # S5: close the loop — let the live path persist a DecisionRow + mark the
+    # source tension decided. Non-fatal (unit tests leave on_decision=None).
+    if run.on_decision is not None:
+        try:
+            run.on_decision(decision_payload)
+        except Exception as e:  # noqa: BLE001
+            log.warning("on_decision callback failed (non-fatal): %s", e)
     final_state = "adopted" if outcome == "adopted" else ("escalated" if outcome == "escalated"
                                                           else "rejected")
     return {"state": final_state, "outcome": outcome}
