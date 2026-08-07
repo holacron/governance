@@ -121,15 +121,24 @@ def test_get_tension_unknown_returns_404(client):
 @pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
 def test_list_tensions_filtered_by_status(client):
     """The status query param filters the backlog."""
-    client.post("/instances/kimberim/tensions", json={
+    created = client.post("/instances/kimberim/tensions", json={
         "title": "open one", "description": "d",
     })
+    assert created.status_code == 201
+    created_id = created.json()["tension_id"]
     r = client.get("/instances/kimberim/tensions?status=open")
     assert r.status_code == 200
+    open_ids = {t["tension_id"] for t in r.json()["tensions"]}
     assert all(t["status"] == "open" for t in r.json()["tensions"])
-    # No decided tensions yet.
+    assert created_id in open_ids, "the tension we just posted should be in 'open'"
+    # The 'decided' filter must return only decided tensions AND must NOT include
+    # the 'open' one we just created (proves the filter excludes other statuses).
+    # We don't assert the bucket is empty — a shared dev DB accumulates state from
+    # live smoke runs; the point is that filtering is correct, not that it's bare.
     r2 = client.get("/instances/kimberim/tensions?status=decided")
-    assert r2.json()["tensions"] == []
+    decided = r2.json()["tensions"]
+    assert all(t["status"] == "decided" for t in decided)
+    assert created_id not in {t["tension_id"] for t in decided}
 
 
 @pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")

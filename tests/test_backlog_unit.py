@@ -256,3 +256,41 @@ def test_mark_decided_links_tension_to_decision(db_session):
     refetched = get_tension(s, tension_id=t.id)
     assert refetched.status == "decided"
     assert refetched.decision_id == decision.id
+
+
+# ── seed_tensions activation (the dormant S0 hook) ───────────────────────────
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_seed_tensions_populates_empty_backlog(db_session):
+    """When the backlog is empty, seed_tensions (from first_decision) populate
+    it. This is the dormant S0 hook S5.8 activates — verified at the store
+    layer (what live.py's seeding loop does), no LLM needed."""
+    s = db_session
+    instance_id = "kimberim"
+    # Simulate the seeds from instances/kimberim/instance.yaml.
+    seeds = [
+        "Maximising grid export revenue may crowd out the compute value-add.",
+        "On-site compute could anchor a local industry but raises water/heat demand.",
+    ]
+    founder_id = _founder_agent_id(s, instance_id)
+    for seed in seeds:
+        raise_tension(
+            s, instance_id=instance_id, raised_by_agent_id=founder_id,
+            title=seed[:80], description=seed,
+        )
+    s.commit()
+
+    backlog = list_backlog(s, instance_id=instance_id)
+    assert len(backlog) == 2
+    assert all(t.status == "open" for t in backlog)
+    # The seeded titles are the first 80 chars of each seed (the seeding rule).
+    titles = [t.title for t in backlog]
+    assert any("grid export revenue" in t.lower() for t in titles)
+    assert any("compute could anchor" in t.lower() for t in titles)
+
+    # next_tension now picks one of the seeded tensions (not None).
+    popped = next_tension(s, instance_id=instance_id)
+    assert popped is not None
+    assert popped.title in titles

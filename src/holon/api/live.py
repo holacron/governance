@@ -37,13 +37,35 @@ from holon.store import (
     append_ledger_event,
     get_tension,
     list_agents,
+    list_backlog,
     make_engine,
     mark_decided,
     mark_in_deliberation,
     next_tension,
+    raise_tension,
+    register_agent,
 )
 
 log = logging.getLogger(__name__)
+
+
+def _ensure_founder(s, instance_id: str, instance: InstanceConfig):
+    """Get or create the founder's agent_registry row for this instance.
+
+    Needed because Tension.raised_by is a FK to agent_registry, and seed
+    tensions need a raiser. Reuses an existing founder agent if present.
+    """
+    founder_name = instance.founder.name if instance.founder else "Founder"
+    existing = [a for a in list_agents(s, instance_id=instance_id)
+                if a.display_name == founder_name and a.role == "founder"]
+    if existing:
+        return existing[0].agent_id
+    row = register_agent(
+        s, instance_id=instance_id, display_name=founder_name,
+        role="founder", capability="Instance founder",
+    )
+    s.flush()
+    return row.agent_id
 
 
 def _participant_agent(display_name: str, capability: str, instance_id: str) -> MetaAgent:
@@ -133,6 +155,27 @@ def run_deliberation_live(
         # fallback (back-compat for S0-S4, which have no backlog).
         tension = None
         with SMSession(eng) as s:
+            # S5.8: if no specific tension requested AND the backlog is empty,
+            # seed it from the instance's first_decision.seed_tensions (the
+            # dormant hook that's been in the config since S0). This gives a
+            # fresh Holon a real multi-tension backlog out of the box.
+            if tension_id is None and not list_backlog(s, instance_id=instance_id):
+                seeds = (
+                    instance.first_decision.seed_tensions
+                    if instance.first_decision else []
+                )
+                if seeds:
+                    founder_agent = _ensure_founder(s, instance_id, instance)
+                    for i, seed in enumerate(seeds):
+                        raise_tension(
+                            s, instance_id=instance_id,
+                            raised_by_agent_id=founder_agent,
+                            title=seed[:80] or f"Seed tension {i}",
+                            description=seed,
+                        )
+                    s.commit()
+                    log.info("seeded %d tensions for %s", len(seeds), instance_id)
+
             trow = None
             if tension_id is not None:
                 trow = get_tension(s, tension_id=tension_id)
@@ -182,10 +225,23 @@ def run_deliberation_live(
                     if prop_id is not None:
                         existing = s.get(ProposalRow, prop_id)
                         if existing is None:
+                            # drafted_by is an FK to agent_registry. The
+                            # architect is a MetaAgent whose agent_id isn't
+                            # registered; use a registered agent for this
+                            # instance (the tension's raiser if registered, else
+                            # ensure the founder exists) so the FK holds.
+                            registered = list_agents(s, instance_id=instance_id)
+                            drafter = next(
+                                (a.agent_id for a in registered
+                                 if a.agent_id == tension.raised_by.agent_id),
+                                None,
+                            )
+                            if drafter is None:
+                                drafter = _ensure_founder(s, instance_id, instance)
                             s.add(ProposalRow(
                                 id=prop_id, instance_id=instance_id,
                                 tension_id=payload.get("tension_id") or tension.id,
-                                drafted_by=architect.ref.agent_id,
+                                drafted_by=drafter,
                                 title=tension.title,
                             ))
                             s.flush()
