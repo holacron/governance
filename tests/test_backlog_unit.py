@@ -28,6 +28,8 @@ from holon.store import (
     next_tension,
     raise_tension,
     register_agent,
+    agent_permissions,
+    get_agent,
     triage_tension,
 )
 from holon.store import DecisionRow, ProposalRow
@@ -294,3 +296,68 @@ def test_seed_tensions_populates_empty_backlog(db_session):
     popped = next_tension(s, instance_id=instance_id)
     assert popped is not None
     assert popped.title in titles
+
+
+# ── ABAC registration (S6.2): taxonomy cell + resolved permissions ────────────
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_register_agent_with_abac_cell_stores_permissions(db_session):
+    """Registering an agent with a stakeholder_type stores the resolved
+    permissions (JSON) + the taxonomy cell on the row."""
+    s = db_session
+    from holon.config import resolve_cell, load_instance_config
+    ic = load_instance_config("kimberim")
+    perms, weight = resolve_cell(ic.abac, "founder", None)
+    row = register_agent(
+        s, instance_id="kimberim", display_name="Adrian",
+        role="founder", stakeholder_type="founder",
+        functional_domain=None, permissions=perms, weight=weight,
+    )
+    s.flush()
+    assert row.stakeholder_type == "founder"
+    assert row.functional_domain is None
+    assert row.weight == 2.0
+    # permissions stored as a JSON array string.
+    assert "veto" in row.permissions and "submit" in row.permissions
+    # agent_permissions round-trips it back to a set.
+    fetched = get_agent(s, agent_id=row.agent_id)
+    assert "veto" in agent_permissions(fetched)
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_register_agent_without_taxonomy_is_back_compat(db_session):
+    """An agent registered with no stakeholder_type (every pre-S6 agent) has
+    NULL taxonomy columns and gets the participant default permissions."""
+    s = db_session
+    row = register_agent(s, instance_id="kimberim", display_name="Legacy Agent")
+    s.flush()
+    assert row.stakeholder_type is None
+    assert row.functional_domain is None
+    assert row.permissions is None
+    # agent_permissions returns the participant default for NULL permissions.
+    assert agent_permissions(row) == {"submit", "deliberate", "vote"}
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_register_agent_with_cell_override(db_session):
+    """A cell override (stakeholder_type:functional_domain) is honoured."""
+    s = db_session
+    # Register a staff:ethics agent; per the KIMBERIM matrix staff gets
+    # [submit, triage, deliberate, vote] — exercise the override path by
+    # passing a custom permissions set (what a richer matrix would resolve).
+    row = register_agent(
+        s, instance_id="kimberim", display_name="Ethics Lead",
+        role="staff", stakeholder_type="staff",
+        functional_domain="ethics",
+        permissions={"submit", "deliberate", "vote", "certify"},
+        weight=1.5,
+    )
+    s.flush()
+    assert row.stakeholder_type == "staff"
+    assert row.functional_domain == "ethics"
+    assert row.weight == 1.5
+    assert agent_permissions(row) == {"submit", "deliberate", "vote", "certify"}

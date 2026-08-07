@@ -44,6 +44,25 @@ def test_instance_summary(client):
     assert "compute" in body["first_decision"]["title"].lower()
 
 
+# ── Taxonomy & ABAC transparency (S6) ────────────────────────────────────────
+
+
+def test_taxonomy_endpoint_returns_matrix(client):
+    """GET /instances/{id}/taxonomy returns the stakeholder types, functional
+    domains, and the full ABAC matrix (weights + permissions + overrides)."""
+    r = client.get("/instances/kimberim/taxonomy")
+    assert r.status_code == 200
+    body = r.json()
+    assert "founder" in body["stakeholder_types"]
+    assert "traditional-owners" in body["stakeholder_types"]
+    assert "cultural-heritage" in body["functional_domains"]
+    abac = body["abac"]
+    assert abac["weights"]["founder"] == 2.0
+    assert abac["weights"]["traditional-owners"] == 2.0
+    assert "veto" in abac["permissions"]["founder"]
+    assert "veto" not in abac["permissions"]["traditional-owners"]
+
+
 # ── Agent registration ("Welcome an Agent") ──────────────────────────────────
 
 
@@ -66,6 +85,157 @@ def test_register_and_list_agent(client):
     assert r2.status_code == 200
     names = [a["display_name"] for a in r2.json()["agents"]]
     assert "Grid Stability Agent" in names
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_register_agent_with_taxonomy_resolves_cell(client):
+    """S6: registering with stakeholder_type resolves the ABAC cell — the
+    response carries permissions + weight from the instance matrix."""
+    r = client.post("/instances/kimberim/agents", json={
+        "display_name": "Miriwoong Delegate",
+        "capability": "Cultural heritage & Country",
+        "stakeholder_type": "traditional-owners",
+        "functional_domain": "cultural-heritage",
+    })
+    assert r.status_code == 201
+    body = r.json()
+    assert body["stakeholder_type"] == "traditional-owners"
+    # Traditional Owners get weight 2.0 in the seeded KIMBERIM matrix.
+    assert body["weight"] == 2.0
+    perms = set(body["permissions"])
+    assert "submit" in perms and "vote" in perms
+    assert "veto" not in perms  # TOs vote but do not veto
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_agent_detail_returns_resolved_cell(client):
+    """GET /instances/{id}/agents/{agent_id} returns the agent's ABAC cell —
+    stakeholder_type, functional_domain, resolved permissions, weight."""
+    reg = client.post("/instances/kimberim/agents", json={
+        "display_name": "Finance Lead",
+        "capability": "capital structure",
+        "stakeholder_type": "investor",
+        "functional_domain": "finance",
+    })
+    assert reg.status_code == 201
+    agent_id = reg.json()["agent_id"]
+
+    r = client.get(f"/instances/kimberim/agents/{agent_id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["agent_id"] == agent_id
+    assert body["stakeholder_type"] == "investor"
+    assert body["functional_domain"] == "finance"
+    # investor not in the seeded matrix → participant default perms + weight 1.0
+    assert set(body["permissions"]) == {"submit", "deliberate", "vote"}
+    assert body["weight"] == 1.0
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_agent_detail_unknown_returns_404(client):
+    """An unregistered agent_id → 404."""
+    r = client.get(f"/instances/kimberim/agents/{uuid4()}")
+    assert r.status_code == 404
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_submit_tension_rejected_for_observe_only_agent(client):
+    """S6 ABAC submission gate: an observe-only agent (regulator) cannot
+    submit a tension → 403."""
+    reg = client.post("/instances/kimberim/agents", json={
+        "display_name": "ERA Regulator",
+        "capability": "regulatory oversight",
+        "stakeholder_type": "regulator",
+    })
+    assert reg.status_code == 201
+    agent_id = reg.json()["agent_id"]
+    # Regulator perms are observe + submit in the seeded matrix — so to test
+    # the 403 path we register an observe-ONLY agent via a stakeholder type
+    # whose matrix has no submit. Override is not wired in YAML yet, so we
+    # craft a minimal agent with empty permissions directly via the store.
+    # Simpler: use a stakeholder type NOT in the matrix → gets the participant
+    # default {submit, deliberate, vote}, which PASSES. The 403 path needs an
+    # agent with permissions lacking submit. We build that via the store layer
+    # to isolate the gate logic (the gate is what we're testing here).
+    from sqlmodel import Session as SMSession
+    from holon.config import load_runtime_config
+    from holon.store import make_engine, register_agent
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        row = register_agent(
+            s, instance_id="kimberim", display_name="Observe-Only Bot",
+            permissions={"observe"},  # no submit
+        )
+        s.commit()
+        observe_only_id = row.agent_id
+
+    sub = client.post("/instances/kimberim/tensions", json={
+        "title": "should be blocked",
+        "description": "this agent cannot submit",
+        "raised_by": str(observe_only_id),
+    })
+    assert sub.status_code == 403
+    assert "submit" in sub.json()["error"]
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_submit_tension_allowed_for_submit_agent(client):
+    """S6 ABAC submission gate: an agent WITH submit passes → 201."""
+    from sqlmodel import Session as SMSession
+    from holon.config import load_runtime_config
+    from holon.store import make_engine, register_agent
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        row = register_agent(
+            s, instance_id="kimberim", display_name="Submitter Bot",
+            permissions={"submit", "deliberate"},  # has submit
+        )
+        s.commit()
+        submitter_id = row.agent_id
+
+    sub = client.post("/instances/kimberim/tensions", json={
+        "title": "allowed tension",
+        "description": "this agent can submit",
+        "raised_by": str(submitter_id),
+    })
+    assert sub.status_code == 201
+    assert sub.json()["status"] == "open"
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_submit_tension_unknown_agent_returns_404(client):
+    """S6: a raised_by pointing at an unregistered agent → 404 (not 403)."""
+    sub = client.post("/instances/kimberim/tensions", json={
+        "title": "x", "description": "y",
+        "raised_by": str(uuid4()),
+    })
+    assert sub.status_code == 404
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_submit_tension_null_permissions_back_compat(client):
+    """S6 back-compat: an agent registered with no taxonomy (NULL permissions)
+    gets the participant default → submission passes (201)."""
+    from sqlmodel import Session as SMSession
+    from holon.config import load_runtime_config
+    from holon.store import make_engine, register_agent
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        row = register_agent(
+            s, instance_id="kimberim", display_name="Legacy No-Taxonomy Agent",
+        )
+        s.commit()
+        legacy_id = row.agent_id
+
+    sub = client.post("/instances/kimberim/tensions", json={
+        "title": "legacy submit",
+        "description": "pre-S6 agent submitting",
+        "raised_by": str(legacy_id),
+    })
+    assert sub.status_code == 201
 
 
 # ── Tension intake & backlog (S5) ────────────────────────────────────────────

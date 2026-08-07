@@ -62,6 +62,11 @@ class AgentRegistryRow(SQLModel, table=True):
     model: str = ""  # provider model id (captured for S7 federation)
     endpoint: str = ""  # provider base URL (captured for S7 federation)
     api_key_enc: str = ""  # registered key (opaque; NOT used in MVP execution)
+    # S6 ABAC taxonomy cell (stakeholder-type × functional-domain). NULLable so
+    # every pre-S6 registration still loads; resolved permissions cached here.
+    stakeholder_type: str | None = None
+    functional_domain: str | None = None
+    permissions: str | None = None  # JSON array of Permission values
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -250,12 +255,21 @@ def register_agent(
     model: str = "",
     endpoint: str = "",
     api_key_enc: str = "",
+    stakeholder_type: str | None = None,
+    functional_domain: str | None = None,
+    permissions: set[str] | None = None,
 ) -> AgentRegistryRow:
     """Register an external/participant agent (ROADMAP §6 'Welcome an Agent').
 
     The registered agent becomes eligible for the next cycle. model/endpoint/
     api_key_enc are captured for S7 federation; for the MVP the agent executes
     via the platform's own gateway.
+
+    S6 ABAC: when stakeholder_type is given, the resolved permissions set is
+    JSON-encoded into the permissions column. The caller resolves the cell from
+    the instance's ABACMatrix (via holon.config.resolve_cell) and passes both
+    the taxonomy cell and the resolved permissions — store stays YAML-free.
+    weight is the caller's call too (defaults 1.0 preserves back-compat).
     """
     row = AgentRegistryRow(
         instance_id=instance_id,
@@ -267,6 +281,9 @@ def register_agent(
         model=model,
         endpoint=endpoint,
         api_key_enc=api_key_enc,
+        stakeholder_type=stakeholder_type,
+        functional_domain=functional_domain,
+        permissions=json.dumps(sorted(permissions)) if permissions else None,
     )
     session.add(row)
     session.flush()
@@ -277,6 +294,30 @@ def list_agents(session: SMSession, *, instance_id: str) -> list[AgentRegistryRo
     """List registered agents for an instance."""
     stmt = select(AgentRegistryRow).where(AgentRegistryRow.instance_id == instance_id)
     return list(session.exec(stmt).all())
+
+
+def agent_permissions(row: AgentRegistryRow | None) -> set[str]:
+    """Resolve an agent's permission set from its cached permissions column.
+
+    NULL permissions (every pre-S6 registration, and any agent registered
+    without a stakeholder_type) → the participant default {submit, deliberate,
+    vote}. This preserves the pre-ABAC 'anyone can act as a participant'
+    behaviour for all existing rows and tests.
+    """
+    if row is None:
+        return {"submit", "deliberate", "vote"}
+    if not row.permissions:
+        return {"submit", "deliberate", "vote"}
+    try:
+        perms = json.loads(row.permissions)
+        return set(perms) if isinstance(perms, list) else {"submit", "deliberate", "vote"}
+    except (json.JSONDecodeError, TypeError):
+        return {"submit", "deliberate", "vote"}
+
+
+def get_agent(session: SMSession, *, agent_id: UUID) -> AgentRegistryRow | None:
+    """Fetch a single registered agent by id (None if absent)."""
+    return session.get(AgentRegistryRow, agent_id)
 
 
 # ── Tension backlog CRUD (S5) ────────────────────────────────────────────────

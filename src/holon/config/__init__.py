@@ -100,10 +100,65 @@ class EngageSurface(BaseModel):
 
 
 class TaxonomyPresets(BaseModel):
-    """Seed presets; the full ABAC matrix is built in Sprint 5."""
+    """Seed presets; the full ABAC matrix is built in Sprint 6."""
 
     stakeholder_types: list[str] = Field(default_factory=list)
     functional_domains: list[str] = Field(default_factory=list)
+
+
+class ABACMatrix(BaseModel):
+    """Attribute-based access control matrix (S6, ROADMAP §8 S5 / glossary).
+
+    Authority = stakeholder-type × functional-domain → {permissions, weight}.
+    A full N×M cell matrix is unwieldy in YAML, so we encode it as:
+      - `weights`:        default weight per stakeholder-type (default 1.0).
+      - `permissions`:    default permission set per stakeholder-type.
+      - `overrides`:      optional cell-level overrides keyed "type:domain".
+    `resolve_cell()` merges default + override at registration time.
+
+    Both defaults and overrides are advisory-ish: they're resolved once at
+    registration and stored on the agent row, so the hot path (permission
+    checks during a cycle) is a cheap JSON-column parse, not a config load.
+    """
+
+    weights: dict[str, float] = Field(default_factory=dict)
+    permissions: dict[str, list[str]] = Field(default_factory=dict)
+    overrides: dict[str, dict] = Field(default_factory=dict)
+
+    model_config = {"extra": "ignore"}
+
+
+def resolve_cell(
+    matrix: ABACMatrix | None,
+    stakeholder_type: str | None,
+    functional_domain: str | None = None,
+) -> tuple[set[str], float]:
+    """Resolve an agent's (permissions, weight) from the ABAC matrix.
+
+    Merge order: stakeholder-type defaults → cell override ("type:domain").
+    An unknown/missing stakeholder_type gets the conservative participant
+    default (submit, deliberate, vote) at weight 1.0 — so a NULL taxonomy
+    agent (pre-S6 registration) behaves as before.
+    """
+    if matrix is None or stakeholder_type is None:
+        return {"submit", "deliberate", "vote"}, 1.0
+
+    perms: set[str] = set(
+        matrix.permissions.get(stakeholder_type, ["submit", "deliberate", "vote"])
+    )
+    weight: float = float(matrix.weights.get(stakeholder_type, 1.0))
+
+    # Optional cell-level override: "stakeholder_type:functional_domain".
+    if functional_domain is not None:
+        key = f"{stakeholder_type}:{functional_domain}"
+        cell = matrix.overrides.get(key)
+        if cell:
+            if "permissions" in cell:
+                perms = set(cell["permissions"])
+            if "weight" in cell:
+                weight = float(cell["weight"])
+
+    return perms, weight
 
 
 class GovernanceConfig(BaseModel):
@@ -142,6 +197,7 @@ class InstanceConfig(BaseModel):
     engage_surface: EngageSurface = Field(default_factory=EngageSurface)
     branding: Branding = Field(default_factory=Branding)
     taxonomy: TaxonomyPresets = Field(default_factory=TaxonomyPresets)
+    abac: ABACMatrix = Field(default_factory=ABACMatrix)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
 
     model_config = {"extra": "ignore"}

@@ -40,6 +40,10 @@ _EXPECTED_AGENT_REGISTRY_COLUMNS = {
 _EXPECTED_TENSION_COLUMNS = {
     "status", "priority", "triage", "triaged_by", "triaged_at", "decision_id",
 }
+# The 3 S6 ABAC taxonomy columns 0004 must add to agent_registry.
+_EXPECTED_ABAC_COLUMNS = {
+    "stakeholder_type", "functional_domain", "permissions",
+}
 
 
 def _maintenance_url(db_url: str) -> str:
@@ -105,6 +109,11 @@ def test_apply_migrations_creates_full_schema_on_fresh_db():
             tension_cols = {c["name"] for c in insp.get_columns("tension")}
             assert _EXPECTED_TENSION_COLUMNS <= tension_cols, (
                 f"missing tension columns: {_EXPECTED_TENSION_COLUMNS - tension_cols}"
+            )
+            # The 3 S6 ABAC taxonomy columns exist on agent_registry.
+            assert _EXPECTED_ABAC_COLUMNS <= cols, (
+                f"missing agent_registry ABAC columns: "
+                f"{_EXPECTED_ABAC_COLUMNS - cols}"
             )
         finally:
             eng.dispose()

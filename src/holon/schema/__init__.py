@@ -51,6 +51,25 @@ class AgentRole(StrEnum):
     FOUNDER = "founder"
 
 
+class Permission(StrEnum):
+    """Concrete API actions the ABAC matrix can grant (S6).
+
+    The ROADMAP's abstract classes (observe/participate/decide/delegate/admit/
+    authorize/certify/veto) inform these, but the implementation gates concrete
+    HTTP actions rather than abstract decision rights. Each permission maps to
+    one or more API endpoints.
+    """
+
+    OBSERVE = "observe"      # read-only access to the public record
+    SUBMIT = "submit"        # raise tensions to the backlog
+    TRIAGE = "triage"        # run the Triage Guardian (staff)
+    DELIBERATE = "deliberate"  # participate in consent cycles
+    VOTE = "vote"            # cast consent/objection/abstain
+    VETO = "veto"            # founder veto
+    ADMIT = "admit"          # onboard/register agents
+    CERTIFY = "certify"      # verify/certify outcomes
+
+
 # S5: the backlog lifecycle a Tension moves through. `open` (just submitted) →
 # `triaged` (Triage Guardian assessed) → `scheduled` (popped for deliberation) →
 # `in-deliberation` → `decided` (or `parked`: held back without deliberation).

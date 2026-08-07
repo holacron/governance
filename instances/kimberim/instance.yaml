@@ -50,7 +50,7 @@ branding:
   body_font: Inter
   mono_font: JetBrains Mono
 
-# Taxonomy presets (full ABAC matrix is built in Sprint 5; presets seeded here).
+# Taxonomy presets (full ABAC matrix is built in Sprint 6; presets seeded here).
 taxonomy:
   # Stakeholder types first-class for this instance (ROADMAP §8, S5).
   # NOTE: Traditional Owners / First Nations (Miriwoong/Gija) are a first-class,
@@ -84,6 +84,28 @@ taxonomy:
     - ethics
     - safety-risk
     - operations
+
+# ABAC matrix — stakeholder-type × functional-domain → {permissions, weight} (S6).
+# Defaults are per stakeholder_type; optional cell overrides keyed "type:domain".
+# Built in Sprint 6; seeded here so registration resolves a real cell.
+abac:
+  weights:
+    founder: 2.0
+    traditional-owners: 2.0        # first-class, on Country — non-negotiable weight
+    staff: 1.0
+    regulator: 1.0
+    government-instrumentality: 1.0
+    future-generation-proxy: 1.0
+  permissions:
+    founder: [submit, triage, deliberate, vote, veto, admit]
+    traditional-owners: [submit, deliberate, vote]
+    staff: [submit, triage, deliberate, vote]
+    regulator: [observe, submit]           # oversight, not decision
+    government-instrumentality: [observe, submit]
+    future-generation-proxy: [submit, deliberate, vote, certify]
+  # Cell-level overrides (optional). Keyed "stakeholder_type:functional_domain".
+  # overrides:
+  #   "staff:ethics": {weight: 1.5, permissions: [submit, deliberate, vote]}
 
 # Governance parameters for the consent cycle (ADR 0001). Tunable per instance.
 governance:

@@ -27,8 +27,15 @@ from sse_starlette.sse import EventSourceResponse
 from holon.agents import TriageGuardian
 from holon.api.feed import CLOSE
 from holon.api.live import run_deliberation_live
-from holon.config import load_instance_config, load_runtime_config
+from holon.config import (
+    load_instance_config,
+    load_runtime_config,
+    resolve_cell,
+)
+from holon.schema import Permission
 from holon.store import (
+    agent_permissions,
+    get_agent,
     get_tension,
     list_agents,
     list_backlog,
@@ -46,7 +53,11 @@ router = APIRouter()
 
 
 class AgentRegistration(BaseModel):
-    """The 'Welcome an Agent' form payload."""
+    """The 'Welcome an Agent' form payload.
+
+    S6: optional stakeholder_type + functional_domain place the agent in the
+    ABAC matrix cell, resolving its permissions + weight at registration.
+    """
 
     display_name: str = Field(..., min_length=1)
     owner: str = ""
@@ -54,6 +65,9 @@ class AgentRegistration(BaseModel):
     model: str = ""
     endpoint: str = ""
     api_key: str = Field("", alias="api_key")  # the registered key (opaque to MVP)
+    # S6 ABAC taxonomy cell (optional; omitted = pre-S6 participant default).
+    stakeholder_type: str | None = None
+    functional_domain: str | None = None
 
 
 class AgentOut(BaseModel):
@@ -97,6 +111,25 @@ async def instance_summary(instance_id: str) -> JSONResponse:
     })
 
 
+@router.get("/instances/{instance_id}/taxonomy")
+async def taxonomy(instance_id: str) -> JSONResponse:
+    """The instance's stakeholder-type × functional-domain taxonomy + the ABAC
+    matrix (S6). Public transparency — the permission structure is visible to
+    every participant, consistent with holacracy's fully-public-record rule.
+    """
+    ic = load_instance_config(instance_id)
+    return JSONResponse({
+        "instance_id": instance_id,
+        "stakeholder_types": ic.taxonomy.stakeholder_types,
+        "functional_domains": ic.taxonomy.functional_domains,
+        "abac": {
+            "weights": ic.abac.weights,
+            "permissions": ic.abac.permissions,
+            "overrides": ic.abac.overrides,
+        },
+    })
+
+
 # ── Agent registration ("Welcome an Agent") ──────────────────────────────────
 
 
@@ -104,17 +137,32 @@ async def instance_summary(instance_id: str) -> JSONResponse:
 async def register(instance_id: str, body: AgentRegistration) -> JSONResponse:
     rt = load_runtime_config()
     eng = make_engine(rt.database_url)
+    # S6: resolve the ABAC cell when a stakeholder_type is given.
+    stakeholder_type = body.stakeholder_type or None
+    functional_domain = body.functional_domain or None
+    perms: set[str] | None = None
+    weight = 1.0
+    if stakeholder_type is not None:
+        ic = load_instance_config(instance_id)
+        perms, weight = resolve_cell(ic.abac, stakeholder_type, functional_domain)
     with SMSession(eng) as s:
         row = register_agent(
             s, instance_id=instance_id,
             display_name=body.display_name, owner=body.owner,
             capability=body.capability, model=body.model, endpoint=body.endpoint,
             api_key_enc=body.api_key or "",  # opaque; not used in MVP execution
+            stakeholder_type=stakeholder_type,
+            functional_domain=functional_domain,
+            permissions=perms,
+            weight=weight,
         )
         s.commit()
         return JSONResponse(
             {"agent_id": str(row.agent_id), "display_name": row.display_name,
-             "status": "registered", "eligible": True},
+             "status": "registered", "eligible": True,
+             "stakeholder_type": stakeholder_type,
+             "permissions": sorted(perms) if perms else None,
+             "weight": weight},
             status_code=201,
         )
 
@@ -130,6 +178,35 @@ async def agents(instance_id: str) -> JSONResponse:
                  capability=r.capability, model=r.model).model_dump(mode="json")
         for r in rows
     ]})
+
+
+@router.get("/instances/{instance_id}/agents/{agent_id}")
+async def agent_detail(instance_id: str, agent_id: UUID) -> JSONResponse:
+    """Single agent detail including its ABAC cell (S6 transparency).
+
+    Returns the resolved permission set + weight so the permission structure is
+    fully visible (the holacracy principle that authority is public). 404 if
+    the agent doesn't exist or belongs to another instance.
+    """
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        row = get_agent(s, agent_id=agent_id)
+        if row is None or row.instance_id != instance_id:
+            return JSONResponse({"error": "agent not found"}, status_code=404)
+        return JSONResponse({
+            "agent_id": str(row.agent_id),
+            "instance_id": row.instance_id,
+            "display_name": row.display_name,
+            "role": row.role,
+            "owner": row.owner,
+            "capability": row.capability,
+            "model": row.model,
+            "stakeholder_type": row.stakeholder_type,
+            "functional_domain": row.functional_domain,
+            "permissions": sorted(agent_permissions(row)),
+            "weight": row.weight,
+        })
 
 
 # ── Tension intake & backlog (S5) ────────────────────────────────────────────
@@ -149,9 +226,13 @@ def _ensure_founder_agent(s: SMSession, instance_id: str):
                 if a.display_name == founder_name and a.role == "founder"]
     if existing:
         return existing[0]
+    # S6: resolve the founder ABAC cell so the founder row carries its
+    # permissions + weight from the instance matrix.
+    perms, weight = resolve_cell(ic.abac, "founder", None)
     row = register_agent(
         s, instance_id=instance_id, display_name=founder_name,
         role="founder", capability="Instance founder",
+        stakeholder_type="founder", permissions=perms, weight=weight,
     )
     s.flush()
     return row
@@ -186,13 +267,30 @@ async def submit_tension(instance_id: str, body: TensionSubmission) -> JSONRespo
 
     Anyone can raise (holacracy: 'any participant or internal role files a
     structured tension'). If raised_by is omitted, the tension is attributed to
-    the instance founder. ABAC submission gates come in the next sprint.
+    the instance founder.
+
+    S6 ABAC: if raised_by is given, that agent must hold the 'submit'
+    permission (resolved from its taxonomy cell). The founder fallback always
+    passes (founders carry submit by default). NULL-permission agents (pre-S6)
+    get the participant default {submit, deliberate, vote} → pass.
     """
     rt = load_runtime_config()
     eng = make_engine(rt.database_url)
     with SMSession(eng) as s:
         if body.raised_by is not None:
             raised_by = body.raised_by
+            # S6 ABAC submission gate.
+            agent = get_agent(s, agent_id=raised_by)
+            if agent is None or agent.instance_id != instance_id:
+                return JSONResponse(
+                    {"error": "raised_by agent not registered on this instance"},
+                    status_code=404,
+                )
+            if Permission.SUBMIT not in agent_permissions(agent):
+                return JSONResponse(
+                    {"error": f"agent lacks '{Permission.SUBMIT.value}' permission"},
+                    status_code=403,
+                )
         else:
             founder = _ensure_founder_agent(s, instance_id)
             raised_by = founder.agent_id
@@ -260,6 +358,10 @@ async def triage(instance_id: str, tension_id: UUID) -> JSONResponse:
 
         # Taxonomy context for on-domain assessment.
         taxonomy = ic.taxonomy.model_dump() if ic.taxonomy else {}
+        # S6: include the ABAC matrix so the Guardian can weigh materiality
+        # against who raised it (a founder-weight tension reads differently
+        # from an observe-only regulator's). Cell-level overrides included.
+        abac = ic.abac.model_dump() if ic.abac else {}
 
         guardian = TriageGuardian(instance_id=instance_id)
         prompt = (
@@ -268,6 +370,7 @@ async def triage(instance_id: str, tension_id: UUID) -> JSONResponse:
             f"Tension description: {row.description}\n"
             f"Existing tensions to check for duplicates: {json.dumps(dedup_context)}\n"
             f"Instance taxonomy (for on-domain check): {json.dumps(taxonomy)}\n"
+            f"ABAC matrix (stakeholder authority, for materiality): {json.dumps(abac)}\n"
             "If this duplicates an existing tension, set duplicate_of to that "
             "tension's id (string). Otherwise null."
         )
