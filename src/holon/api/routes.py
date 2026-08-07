@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session as SMSession
 from sse_starlette.sse import EventSourceResponse
 
+from holon.agents import TriageGuardian
 from holon.api.feed import CLOSE
 from holon.api.live import run_deliberation_live
 from holon.config import load_instance_config, load_runtime_config
@@ -34,7 +35,9 @@ from holon.store import (
     make_engine,
     raise_tension,
     register_agent,
+    triage_tension,
 )
+from holon.utils import extract_json
 
 router = APIRouter()
 
@@ -224,6 +227,64 @@ async def get_tension_detail(instance_id: str, tension_id: UUID) -> JSONResponse
         if row is None or row.instance_id != instance_id:
             return JSONResponse({"error": "tension not found"}, status_code=404)
         return JSONResponse(_tension_out(row))
+
+
+@router.post("/instances/{instance_id}/tensions/{tension_id}/triage")
+async def triage(instance_id: str, tension_id: UUID) -> JSONResponse:
+    """Run the Triage Guardian on a backlog tension and record its assessment.
+
+    Feeds the Guardian: the tension itself, a compact digest of existing open/
+    decided tensions (for dedup), and the instance taxonomy (for on-domain).
+    The assessment is written via triage_tension (status → 'triaged', a
+    tension-triaged ledger event is appended). Returns the assessment.
+
+    This is a SOFT gate: the assessment flags duplicates/off-domain/noise but
+    never blocks a tension from the backlog — the founder can still deliberate
+    a flagged tension. The flags live in the fully-public record.
+    """
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    ic = load_instance_config(instance_id)
+    with SMSession(eng) as s:
+        row = get_tension(s, tension_id=tension_id)
+        if row is None or row.instance_id != instance_id:
+            return JSONResponse({"error": "tension not found"}, status_code=404)
+
+        # Dedup context: existing open/decided tensions the Guardian can match
+        # against. Compact (id+title+status) so it fits the context window.
+        candidates = list_backlog(s, instance_id=instance_id)
+        dedup_context = [
+            {"id": str(c.id), "title": c.title, "status": c.status}
+            for c in candidates if c.id != tension_id
+        ]
+
+        # Taxonomy context for on-domain assessment.
+        taxonomy = ic.taxonomy.model_dump() if ic.taxonomy else {}
+
+        guardian = TriageGuardian(instance_id=instance_id)
+        prompt = (
+            "Assess this new tension for the backlog. Respond ONLY as JSON.\n"
+            f"Tension title: {row.title}\n"
+            f"Tension description: {row.description}\n"
+            f"Existing tensions to check for duplicates: {json.dumps(dedup_context)}\n"
+            f"Instance taxonomy (for on-domain check): {json.dumps(taxonomy)}\n"
+            "If this duplicates an existing tension, set duplicate_of to that "
+            "tension's id (string). Otherwise null."
+        )
+        text = guardian.respond(prompt, max_tokens=400, temperature=0.2)
+        assessment = extract_json(text)
+
+        triaged = triage_tension(
+            s, tension_id=tension_id,
+            triaged_by_agent_id=guardian.ref.agent_id,
+            triage=assessment,
+        )
+        s.commit()
+        return JSONResponse({
+            "tension_id": str(tension_id),
+            "status": triaged.status,
+            "assessment": assessment,
+        })
 
 
 # ── Deliberation ──────────────────────────────────────────────────────────────
