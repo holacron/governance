@@ -163,6 +163,35 @@ class Summarizer(MetaAgent):
     )
 
 
+class TriageGuardian(MetaAgent):
+    """Role 9 (S5) — the intake gatekeeper's *assessor*, not its blocker.
+
+    When a tension enters the backlog, the Triage Guardian assesses it against
+    the ledger (is this a duplicate of an open or decided tension?) and the
+    instance taxonomy (is it on-domain?). It NEVER rejects — the holacracy
+    principle is that anyone can raise a tension. Instead it attaches an
+    objective assessment that the scheduler and participants use to prioritize:
+    a flagged duplicate or off-domain tension still goes to the backlog, visibly
+    marked, and can still be deliberated if the founder chooses.
+
+    The assessment is a soft gate (flag + rank), not a hard block — this avoids
+    the gatekeeper-becomes-abuse-vector failure mode while still surfacing
+    frivolity and duplicates in the fully-public record.
+    """
+
+    role = AgentRole.TRIAGE_GUARDIAN
+    system_prompt = (
+        "You are the Triage Guardian in HOLACRON's holacratic consent cycle. A new tension has "
+        "been submitted to the backlog. Assess it objectively — do NOT reject or editorialize. "
+        "Determine: (1) is it on-domain for this Holon's stated purpose and taxonomy? "
+        "(2) is it a duplicate of an existing open or decided tension? (3) what is its "
+        "materiality (a real, actionable gap vs noise)? Assign a suggested_priority "
+        "(1=most urgent .. 100=least). Respond ONLY as JSON with keys: on_domain (bool), "
+        "materiality ('high'|'medium'|'low'|'noise'), duplicate_of (uuid string or null), "
+        "notes (str), suggested_priority (int)."
+    )
+
+
 __all__ = [
     "DevilsAdvocate",
     "Facilitator",
@@ -173,4 +202,5 @@ __all__ = [
     "ProposalArchitect",
     "Secretary",
     "Summarizer",
+    "TriageGuardian",
 ]

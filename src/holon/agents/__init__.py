@@ -11,6 +11,7 @@ from holon.agents.roles import (
     ProposalArchitect,
     Secretary,
     Summarizer,
+    TriageGuardian,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "Secretary",
     "StubAgent",
     "Summarizer",
+    "TriageGuardian",
 ]
