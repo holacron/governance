@@ -35,6 +35,7 @@ from holon.store import (
     DecisionRow,
     ProposalRow,
     append_ledger_event,
+    close_epoch,
     get_tension,
     list_agents,
     list_backlog,
@@ -44,6 +45,7 @@ from holon.store import (
     next_tension,
     raise_tension,
     register_agent,
+    start_epoch,
 )
 
 log = logging.getLogger(__name__)
@@ -109,6 +111,7 @@ def run_deliberation_live(
     config: RuntimeConfig | None = None,
     instance: InstanceConfig | None = None,
     tension_id: UUID | None = None,
+    epoch_id: UUID | None = None,
 ) -> threading.Thread:
     """Start a deliberation in a background thread. Returns the thread (started).
 
@@ -117,6 +120,10 @@ def run_deliberation_live(
       2. Else if the backlog is non-empty, pop the next triaged/open tension.
       3. Else fall back to the instance's first_decision (S0-S4 back-compat —
          preserves every existing live test, which has no backlog).
+
+    S7: when epoch_id is given, the run links to the epoch (started on launch,
+    closed on decision-recorded). When None (the S5 deliberations endpoint),
+    no epoch is touched — preserves every existing live test.
 
     Each cycle event is persisted to Postgres AND pushed to the broker for the
     SSE stream. On completion (or error) the feed is closed.
@@ -209,6 +216,14 @@ def run_deliberation_live(
                     priority=trow.priority,
                 )
                 mark_in_deliberation(s, tension_id=trow.id)
+                # S7: link the epoch to the tension it's deliberating, so the
+                # epoch row carries the full provenance (opened → tension → run).
+                if epoch_id is not None:
+                    from holon.store import get_epoch
+                    epoch_row = get_epoch(s, epoch_id=epoch_id)
+                    if epoch_row is not None and epoch_row.tension_id is None:
+                        epoch_row.tension_id = trow.id
+                        s.add(epoch_row)
                 s.commit()
 
         if tension is None:
@@ -228,6 +243,7 @@ def run_deliberation_live(
         # ProposalRow it references, since record() emits only ledger events)
         # and mark the source tension 'decided'. This is what makes dedup real
         # and the backlog self-cleaning.
+        # S7: if this run is part of an epoch, close it (completed) too.
         def on_decision(payload: dict) -> None:
             try:
                 with SMSession(eng) as s:
@@ -274,8 +290,25 @@ def run_deliberation_live(
                     if tid is not None:
                         mark_decided(s, tension_id=tid, decision_id=decision.id)
                     s.commit()
+                # S7: close the epoch (completed) once the decision is recorded.
+                if epoch_id is not None:
+                    try:
+                        with SMSession(eng) as s:
+                            close_epoch(s, epoch_id=epoch_id, status="completed")
+                            s.commit()
+                    except Exception as ee:  # noqa: BLE001
+                        log.warning("epoch close failed (non-fatal): %s", ee)
             except Exception as e:  # noqa: BLE001
                 log.warning("on_decision persistence failed (non-fatal): %s", e)
+
+        # S7: mark the epoch running + link the run_id before the cycle starts.
+        if epoch_id is not None:
+            try:
+                with SMSession(eng) as s:
+                    start_epoch(s, epoch_id=epoch_id, run_id=run_id)
+                    s.commit()
+            except Exception as ee:  # noqa: BLE001
+                log.warning("epoch start failed (non-fatal): %s", ee)
 
         run = CycleRun(
             instance_id=instance_id,
@@ -298,6 +331,14 @@ def run_deliberation_live(
         except Exception as e:  # noqa: BLE001
             log.exception("deliberation %s failed: %s", run_id, e)
             broker.close(run_id)
+            # S7: close the epoch as 'skipped' if the cycle blew up.
+            if epoch_id is not None:
+                try:
+                    with SMSession(eng) as s:
+                        close_epoch(s, epoch_id=epoch_id, status="skipped")
+                        s.commit()
+                except Exception as ee:  # noqa: BLE001
+                    log.warning("epoch skip-close failed (non-fatal): %s", ee)
 
     thread = threading.Thread(target=_worker, name=f"holon-deliberation-{run_id}", daemon=True)
     thread.start()

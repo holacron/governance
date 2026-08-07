@@ -106,6 +106,24 @@ class RunnerStateRow(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class EpochRow(SQLModel, table=True):
+    """An epoch — the configurable heartbeat of the collective (S7, ROADMAP
+    glossary). One governance cycle per epoch. Tracks the lifecycle
+    pending → running → completed|skipped and links the epoch to the tension
+    it deliberated + the SSE run it spawned."""
+
+    __tablename__ = "epoch"
+
+    id: UUID = Field(default_factory=_uuid_pk, primary_key=True)
+    instance_id: str = Field(index=True)
+    seq: int
+    status: str = Field(default="pending", index=True)  # pending|running|completed|skipped
+    tension_id: UUID | None = Field(default=None, foreign_key="tension.id")
+    run_id: UUID | None = None
+    opened_at: datetime | None = None
+    closed_at: datetime | None = None
+
+
 # Lightweight convenience tables mirroring the schema models — store the full
 # structured cycle objects in the ledger; these are query-friendly projections.
 class TensionRow(SQLModel, table=True):
@@ -165,7 +183,7 @@ class DecisionRow(SQLModel, table=True):
 
 ALL_TABLES = [
     InstanceRow, AgentRegistryRow, TensionRow, ProposalRow,
-    VoteRow, DecisionRow, LedgerEventRow, RunnerStateRow,
+    VoteRow, DecisionRow, LedgerEventRow, RunnerStateRow, EpochRow,
 ]
 
 MIGRATIONS_DIR = REPO_ROOT / "migrations"
@@ -466,26 +484,128 @@ def mark_decided(
     return row
 
 
+# ── Epoch CRUD (S7) ──────────────────────────────────────────────────────────
+
+
+def open_epoch(
+    session: SMSession, *, instance_id: str, tension_id: UUID | None = None,
+) -> EpochRow:
+    """Open a new epoch for the instance. seq is monotonic per-instance
+    (max+1 — same race note as append_ledger_event; SELECT FOR UPDATE deferred).
+    Emits an epoch-opened ledger event. Returns the pending epoch row."""
+    max_seq = session.exec(
+        select(EpochRow.seq).where(EpochRow.instance_id == instance_id)
+    ).all()
+    next_seq = (max(max_seq) + 1) if max_seq else 1
+    row = EpochRow(
+        instance_id=instance_id, seq=next_seq, status="pending",
+        tension_id=tension_id, opened_at=_now(),
+    )
+    session.add(row)
+    session.flush()
+    append_ledger_event(
+        session, instance_id=instance_id, event_type="epoch-opened",
+        payload={
+            "epoch_id": str(row.id), "seq": next_seq,
+            "tension_id": str(tension_id) if tension_id else None,
+        },
+    )
+    return row
+
+
+def start_epoch(
+    session: SMSession, *, epoch_id: UUID, run_id: UUID,
+) -> EpochRow | None:
+    """Mark an epoch running, linking it to the SSE run it spawned."""
+    row = session.get(EpochRow, epoch_id)
+    if row is None:
+        return None
+    row.status = "running"
+    row.run_id = run_id
+    session.add(row)
+    session.flush()
+    return row
+
+
+def close_epoch(
+    session: SMSession, *, epoch_id: UUID, status: str = "completed",
+) -> EpochRow | None:
+    """Close an epoch (completed or skipped). Emits the matching ledger event.
+    Returns the row, or None if the epoch doesn't exist."""
+    row = session.get(EpochRow, epoch_id)
+    if row is None:
+        return None
+    row.status = status
+    row.closed_at = _now()
+    session.add(row)
+    session.flush()
+    event_type = "epoch-skipped" if status == "skipped" else "epoch-closed"
+    append_ledger_event(
+        session, instance_id=row.instance_id, event_type=event_type,
+        payload={"epoch_id": str(row.id), "seq": row.seq, "status": status},
+    )
+    return row
+
+
+def list_epochs(
+    session: SMSession, *, instance_id: str, status: str | None = None,
+) -> list[EpochRow]:
+    """List epochs for an instance, newest first (seq desc). Optional status filter."""
+    stmt = select(EpochRow).where(EpochRow.instance_id == instance_id)
+    if status is not None:
+        stmt = stmt.where(EpochRow.status == status)
+    stmt = stmt.order_by(EpochRow.seq.desc())
+    return list(session.exec(stmt).all())
+
+
+def get_epoch(session: SMSession, *, epoch_id: UUID) -> EpochRow | None:
+    """Fetch a single epoch by id."""
+    return session.get(EpochRow, epoch_id)
+
+
+def current_epoch(
+    session: SMSession, *, instance_id: str,
+) -> EpochRow | None:
+    """The latest running epoch for an instance (for overlap detection).
+    None if no epoch is currently running."""
+    stmt = (
+        select(EpochRow)
+        .where(EpochRow.instance_id == instance_id, EpochRow.status == "running")
+        .order_by(EpochRow.seq.desc())
+    )
+    rows = list(session.exec(stmt).all())
+    return rows[0] if rows else None
+
+
 __all__ = [
     "ALL_TABLES",
     "AgentRegistryRow",
     "DecisionRow",
+    "EpochRow",
     "InstanceRow",
     "LedgerEventRow",
     "ProposalRow",
     "RunnerStateRow",
     "TensionRow",
     "VoteRow",
+    "agent_permissions",
     "append_ledger_event",
     "apply_migrations",
+    "close_epoch",
+    "current_epoch",
+    "get_agent",
+    "get_epoch",
     "get_tension",
     "list_agents",
     "list_backlog",
+    "list_epochs",
     "make_engine",
     "mark_decided",
     "mark_in_deliberation",
     "next_tension",
+    "open_epoch",
     "raise_tension",
     "register_agent",
+    "start_epoch",
     "triage_tension",
 ]

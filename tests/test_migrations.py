@@ -27,10 +27,10 @@ load_dotenv()
 
 _HAS_DB = bool(os.getenv("DATABASE_URL"))
 
-# The 8 tables the authoritative 0001 migration must create.
+# The 9 tables the authoritative migrations must create (8 from 0001 + epoch from 0005).
 _EXPECTED_TABLES = {
     "instance", "agent_registry", "tension", "proposal",
-    "vote", "decision", "ledger_event", "runner_state",
+    "vote", "decision", "ledger_event", "runner_state", "epoch",
 }
 # The 5 S4 registration columns 0002 must add to agent_registry.
 _EXPECTED_AGENT_REGISTRY_COLUMNS = {

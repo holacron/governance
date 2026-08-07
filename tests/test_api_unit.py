@@ -441,3 +441,70 @@ def test_feed_broker_open_is_idempotent():
         assert loop.run_until_complete(q2.get())["event_type"] == "ping"
     finally:
         loop.close()
+
+
+# ── Epoch & cadence (S7) ─────────────────────────────────────────────────────
+
+
+def test_cadence_endpoint_returns_manual_default(client):
+    """GET /instances/{id}/cadence returns the cadence config. KIMBERIM defaults
+    to 'manual' (no scheduler) — zero behaviour change."""
+    r = client.get("/instances/kimberim/cadence")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["preset"] == "manual"
+    assert body["interval_seconds"] == 0
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_epochs_list_returns_list(client):
+    """GET /instances/{id}/epochs returns the epoch list (newest first). The
+    shared dev DB accumulates epochs from prior runs, so we assert shape, not
+    emptiness."""
+    r = client.get("/instances/kimberim/epochs")
+    assert r.status_code == 200
+    epochs = r.json()["epochs"]
+    assert isinstance(epochs, list)
+    # Newest-first ordering (seq descending).
+    if len(epochs) > 1:
+        seqs = [e["seq"] for e in epochs]
+        assert seqs == sorted(seqs, reverse=True)
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_post_epoch_opens_and_starts_deliberation(client):
+    """POST /instances/{id}/epochs opens an epoch + starts a deliberation. The
+    epoch appears in GET .../epochs and the returned run_id is linkable.
+
+    If a prior epoch is still 'running' in the shared dev DB (overlap guard),
+    we accept the 409 and verify the list reflects the running epoch instead."""
+    r = client.post("/instances/kimberim/epochs")
+    if r.status_code == 409:
+        # Overlap guard fired — a prior epoch is running. Verify it's visible.
+        r2 = client.get("/instances/kimberim/epochs?status=running")
+        assert r2.status_code == 200
+        assert len(r2.json()["epochs"]) >= 1
+        return
+    assert r.status_code == 202
+    body = r.json()
+    assert body["status"] == "running"
+    epoch_id = body["epoch_id"]
+    run_id = body["run_id"]
+    assert body["events_url"] == f"/deliberations/{run_id}/events"
+    assert body["seq"] >= 1
+
+    # The epoch is visible in the list.
+    r2 = client.get("/instances/kimberim/epochs")
+    ids = [e["epoch_id"] for e in r2.json()["epochs"]]
+    assert epoch_id in ids
+
+    # Epoch detail is fetchable.
+    r3 = client.get(f"/instances/kimberim/epochs/{epoch_id}")
+    assert r3.status_code == 200
+    assert r3.json()["epoch_id"] == epoch_id
+
+
+@pytest.mark.skipif(not _HAS_DB, reason="needs DATABASE_URL")
+def test_epoch_detail_unknown_returns_404(client):
+    r = client.get(f"/instances/kimberim/epochs/{uuid4()}")
+    assert r.status_code == 404

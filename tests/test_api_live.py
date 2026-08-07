@@ -157,3 +157,72 @@ def test_live_submit_triage_deliberate_decide():
         f"tension should be decided after the cycle; got {detail['status']}"
     )
     assert detail["decision_id"] is not None, "tension should link to its decision"
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_LIVE, reason="needs ZAI_API_KEY + DATABASE_URL")
+def test_live_epoch_opens_deliberates_and_closes():
+    """The S7 exit criterion, end-to-end via the epoch-aware API:
+
+    POST an epoch → the epoch opens, fires a deliberation, the cycle records a
+    decision, AND the epoch closes (status 'completed'). Verifies the cadence
+    loop: epoch → cycle → decision → epoch-closed.
+    """
+    client = TestClient(create_app())
+
+    # 1. Open an epoch + start the deliberation.
+    start = client.post(f"/instances/{INSTANCE}/epochs")
+    if start.status_code == 409:
+        pytest.skip("an epoch is already running in the shared dev DB; retry later")
+    assert start.status_code == 202
+    body = start.json()
+    epoch_id = body["epoch_id"]
+    run_id = body["run_id"]
+    events_url = body["events_url"]
+
+    # 2. Consume the SSE stream until close (the terminal decision-recorded).
+    received_types: list[str] = []
+    last_payload: dict = {}
+    deadline = time.time() + 240
+    with client.stream("GET", events_url) as resp:
+        assert resp.status_code == 200
+        buf_type = None
+        for line in resp.iter_lines():
+            if time.time() > deadline:
+                break
+            if line.startswith("event:"):
+                buf_type = line.split(":", 1)[1].strip()
+            elif line.startswith("data:") and buf_type:
+                if buf_type == "close":
+                    break
+                if buf_type == "ping":
+                    buf_type = None
+                    continue
+                received_types.append(buf_type)
+                try:
+                    last_payload = json.loads(line.split(":", 1)[1].strip())
+                except (json.JSONDecodeError, IndexError):
+                    pass
+                buf_type = None
+
+    # 3. The cycle ran to a recorded decision.
+    assert "proposal-drafted" in received_types, "expected the cycle to start"
+    assert received_types[-1] == "decision-recorded", (
+        f"expected decision-recorded last, got {received_types[-3:]}"
+    )
+    assert last_payload.get("outcome") in ("adopted", "escalated")
+
+    # 4. S7 close-the-loop: the epoch is closed (status 'completed').
+    #    Allow a brief moment for the worker's on_decision close to land.
+    deadline2 = time.time() + 10
+    epoch_status = None
+    while time.time() < deadline2:
+        det = client.get(f"/instances/{INSTANCE}/epochs/{epoch_id}")
+        assert det.status_code == 200
+        epoch_status = det.json()["status"]
+        if epoch_status in ("completed", "skipped"):
+            break
+        time.sleep(1)
+    assert epoch_status == "completed", (
+        f"epoch should be completed after the cycle; got {epoch_status}"
+    )

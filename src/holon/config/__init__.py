@@ -185,6 +185,24 @@ class GovernanceConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class CadenceConfig(BaseModel):
+    """The epoch cadence for an instance (S7, ROADMAP glossary/§8 S6).
+
+    preset controls whether the in-process scheduler fires epochs:
+      - manual   (default): no scheduler; epochs are triggered via the API.
+      - realtime: scheduler fires on interval_seconds (test/dev friendly).
+      - daily:   scheduler fires every 24h (interval_seconds ignored).
+    S7 delivers synchronous-per-epoch cadence: the epoch controls WHEN a
+    cycle starts; each cycle still runs to completion synchronously. True
+    async mid-cycle windows are deferred (requires CycleState persistence).
+    """
+
+    preset: Literal["manual", "realtime", "daily"] = "manual"
+    interval_seconds: int = 0  # used by 'realtime'; 0 = no auto-fire
+
+    model_config = {"extra": "ignore"}
+
+
 class InstanceConfig(BaseModel):
     """A deployment of Holon for one venture (ROADMAP §7, §13 glossary)."""
 
@@ -199,6 +217,7 @@ class InstanceConfig(BaseModel):
     taxonomy: TaxonomyPresets = Field(default_factory=TaxonomyPresets)
     abac: ABACMatrix = Field(default_factory=ABACMatrix)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
+    cadence: CadenceConfig = Field(default_factory=CadenceConfig)
 
     model_config = {"extra": "ignore"}
 

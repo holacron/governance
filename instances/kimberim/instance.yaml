@@ -115,3 +115,9 @@ governance:
   override_threshold: 0.75       # weighted supermajority to override a veto
   abstain_counts_as: neither     # abstain = not-an-objection (ADR open-q #2)
 
+# Epoch cadence (S7). 'manual' = trigger epochs via POST .../epochs (no scheduler).
+# 'realtime'/'daily' start an in-process scheduler that fires epochs on cadence.
+cadence:
+  preset: manual
+  interval_seconds: 0
+

@@ -35,13 +35,20 @@ from holon.config import (
 from holon.schema import Permission
 from holon.store import (
     agent_permissions,
+    close_epoch,
+    current_epoch,
     get_agent,
+    get_epoch,
     get_tension,
     list_agents,
     list_backlog,
+    list_epochs,
     make_engine,
+    next_tension,
+    open_epoch,
     raise_tension,
     register_agent,
+    start_epoch,
     triage_tension,
 )
 from holon.utils import extract_json
@@ -442,6 +449,100 @@ async def events(run_id: UUID, request: Request) -> EventSourceResponse:
             broker.drop(run_id)
 
     return EventSourceResponse(event_generator())
+
+
+# ── Epoch & cadence (S7) ─────────────────────────────────────────────────────
+
+
+def _epoch_out(r) -> dict:
+    """Serialize an EpochRow for the API."""
+    return {
+        "epoch_id": str(r.id),
+        "instance_id": r.instance_id,
+        "seq": r.seq,
+        "status": r.status,
+        "tension_id": str(r.tension_id) if r.tension_id else None,
+        "run_id": str(r.run_id) if r.run_id else None,
+        "opened_at": r.opened_at.isoformat() if r.opened_at else None,
+        "closed_at": r.closed_at.isoformat() if r.closed_at else None,
+    }
+
+
+@router.get("/instances/{instance_id}/cadence")
+async def get_cadence(instance_id: str) -> JSONResponse:
+    """The instance's epoch cadence config (S7)."""
+    ic = load_instance_config(instance_id)
+    return JSONResponse({"instance_id": instance_id, **ic.cadence.model_dump()})
+
+
+@router.get("/instances/{instance_id}/epochs")
+async def epochs(instance_id: str, status: str | None = None) -> JSONResponse:
+    """List the instance's epochs, newest first. Optional status filter."""
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        rows = list_epochs(s, instance_id=instance_id, status=status)
+    return JSONResponse({"epochs": [_epoch_out(r) for r in rows]})
+
+
+@router.get("/instances/{instance_id}/epochs/{epoch_id}")
+async def epoch_detail(instance_id: str, epoch_id: UUID) -> JSONResponse:
+    """Single epoch detail. 404 if not found or belongs to another instance."""
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    with SMSession(eng) as s:
+        row = get_epoch(s, epoch_id=epoch_id)
+        if row is None or row.instance_id != instance_id:
+            return JSONResponse({"error": "epoch not found"}, status_code=404)
+        return JSONResponse(_epoch_out(row))
+
+
+@router.post("/instances/{instance_id}/epochs")
+async def start_epoch_cycle(instance_id: str, request: Request) -> JSONResponse:
+    """Open an epoch and start a deliberation on it (S7 epoch-aware trigger).
+
+    This is the bridge between manual S5 deliberations and scheduled S7 epochs.
+    It opens an epoch, resolves the next backlog tension (seeding from
+    seed_tensions if the backlog is empty — same S5.8 logic), fires
+    run_deliberation_live, and links the run to the epoch. The epoch closes
+    when the cycle's decision is recorded (wired via the live worker).
+    Returns {epoch_id, seq, run_id, events_url, tension_id}.
+    """
+    rt = load_runtime_config()
+    eng = make_engine(rt.database_url)
+    ic = load_instance_config(instance_id)
+
+    # Open the epoch + resolve the tension to deliberate in one session.
+    with SMSession(eng) as s:
+        # Overlap guard: refuse if an epoch is already running for this instance.
+        if current_epoch(s, instance_id=instance_id) is not None:
+            return JSONResponse(
+                {"error": "an epoch is already running for this instance"},
+                status_code=409,
+            )
+        epoch = open_epoch(s, instance_id=instance_id)
+        s.commit()
+        epoch_id = epoch.id
+        epoch_seq = epoch.seq
+
+    # Fire the deliberation (the worker resolves the tension + seeds if empty).
+    broker = request.app.state.broker
+    run_id = uuid4()
+    broker.open(run_id, asyncio.get_running_loop())
+    run_deliberation_live(
+        instance_id=instance_id, run_id=run_id, broker=broker,
+        config=rt, instance=ic, epoch_id=epoch_id,
+    )
+    return JSONResponse(
+        {
+            "epoch_id": str(epoch_id),
+            "seq": epoch_seq,
+            "run_id": str(run_id),
+            "events_url": f"/deliberations/{run_id}/events",
+            "status": "running",
+        },
+        status_code=202,
+    )
 
 
 __all__ = ["router"]

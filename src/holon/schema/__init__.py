@@ -265,6 +265,10 @@ class LedgerEvent(BaseModel):
         "position-stated",
         "digest",
         "core-disagreement",
+        # S7: epoch lifecycle (cadence heartbeats).
+        "epoch-opened",
+        "epoch-closed",
+        "epoch-skipped",
     ]
     # The structured payload (one of the cycle models above), JSON-encoded.
     payload: dict
