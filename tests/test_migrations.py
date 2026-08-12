@@ -44,6 +44,8 @@ _EXPECTED_TENSION_COLUMNS = {
 _EXPECTED_ABAC_COLUMNS = {
     "stakeholder_type", "functional_domain", "permissions",
 }
+# The S7 adapter transport hint 0006 must add to agent_registry.
+_EXPECTED_ADAPTER_COLUMNS = {"adapter"}
 
 
 def _maintenance_url(db_url: str) -> str:
@@ -114,6 +116,11 @@ def test_apply_migrations_creates_full_schema_on_fresh_db():
             assert _EXPECTED_ABAC_COLUMNS <= cols, (
                 f"missing agent_registry ABAC columns: "
                 f"{_EXPECTED_ABAC_COLUMNS - cols}"
+            )
+            # The S7 adapter column exists on agent_registry.
+            assert _EXPECTED_ADAPTER_COLUMNS <= cols, (
+                f"missing agent_registry adapter columns: "
+                f"{_EXPECTED_ADAPTER_COLUMNS - cols}"
             )
         finally:
             eng.dispose()

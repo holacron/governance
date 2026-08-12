@@ -139,32 +139,35 @@ def object_round(state: CycleState, run: CycleRun) -> CycleState:
         f'try, or regresses a role. Proposal: {proposal_json}'
     )
 
-    def _record(agent, *, mandatory: bool = False) -> None:
-        """Ask one agent for its position; record position + any objection.
+    def _ask_position(agent, *, mandatory: bool = False) -> dict:
+        """Ask one agent for its position (pure; no shared-state mutation).
 
-        Tolerates BOTH response formats for back-compat with S1/S2 stubs:
-          - new (S3): {"position": "consent"|"objection"|"abstain", ...}
-          - old (S1/S2): {"objection": false} -> consent; {"criterion":...} -> objection
+        Returns a result dict: {agent_id, display_name, weight, position,
+        objection?}. Tolerates both response formats for back-compat with
+        S1/S2 stubs. Any exception (timeout, provider error) → abstain.
         """
         ref = getattr(agent, "ref", None) or AgentRef(instance_id=run.instance_id)
-        text = agent.respond(position_prompt, max_tokens=400, temperature=0.3)
-        payload = _extract_json(text)
+        try:
+            text = agent.respond(position_prompt, max_tokens=400, temperature=0.3)
+            payload = _extract_json(text)
+        except Exception as e:  # noqa: BLE001 — a failed/timed-out agent abstains
+            log.warning("agent %s position failed (→ abstain): %s", ref.display_name, e)
+            return {"agent_id": str(ref.agent_id), "display_name": ref.display_name,
+                    "weight": ref.weight, "position": "abstain"}
 
-        # Resolve the position from whichever format the agent used.
         if "position" in payload:
             pos = payload.get("position", "abstain").strip().lower()
         elif payload.get("objection", True) is False:
-            pos = "consent"  # old format: explicit no-objection == consent
+            pos = "consent"
         elif "criterion" in payload:
-            pos = "objection"  # old format: a criterion means an objection
+            pos = "objection"
         else:
             pos = "abstain"
         if pos not in ("consent", "objection", "abstain"):
             pos = "abstain"
 
-        positions.append({"agent_id": str(ref.agent_id), "position": pos,
-                          "display_name": ref.display_name, "weight": ref.weight})
-        _emit(run, "position-stated", {"agent_id": str(ref.agent_id), "position": pos})
+        result = {"agent_id": str(ref.agent_id), "display_name": ref.display_name,
+                  "weight": ref.weight, "position": pos}
         if pos == "objection":
             criterion = payload.get("criterion", "not-safe-to-try")
             if criterion not in ("causes-harm", "not-safe-to-try", "regresses-role"):
@@ -177,15 +180,54 @@ def object_round(state: CycleState, run: CycleRun) -> CycleState:
                 criterion=criterion,
                 validity=ObjectionValidity.VALID,
             )
-            od = ob.model_dump(mode="json")
+            result["objection"] = ob.model_dump(mode="json")
+        return result
+
+    def _apply(result: dict, *, mandatory: bool = False) -> None:
+        """Apply a position result to the shared lists + emit ledger events
+        (main-thread only, so emission order is deterministic)."""
+        pos = result["position"]
+        positions.append({"agent_id": result["agent_id"], "position": pos,
+                          "display_name": result["display_name"],
+                          "weight": result["weight"]})
+        _emit(run, "position-stated", {"agent_id": result["agent_id"], "position": pos})
+        if "objection" in result:
+            od = result["objection"]
             _emit(run, "objection-raised", od)
             objections.append(od)
 
-    # S3: every participant agent states a position.
-    for agent in getattr(run, "participant_agents", []) or []:
-        _record(agent)
-    # The Devil's Advocate is always consulted (mandatory red-team).
-    _record(da, mandatory=True)
+    # S7: concurrent position fan-out with per-agent timeout → abstain default.
+    # Staff + stubs respond instantly; only LLM-backed agents feel the timeout.
+    # Single-agent / DA-only path stays sequential (zero behaviour change for S2).
+    agents = list(getattr(run, "participant_agents", []) or [])
+    timeout_s = getattr(run, "agent_timeout_s", 30.0)
+
+    if len(agents) < 1:
+        # Sequential path (back-compat: S2 tests, DA-only, no participants).
+        _apply(_ask_position(da, mandatory=True))
+    else:
+        # Concurrent path: fan out participants + DA, each bounded by timeout_s.
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+        with ThreadPoolExecutor(max_workers=min(len(agents) + 1, 8)) as pool:
+            futures = {pool.submit(_ask_position, a): a for a in agents}
+            futures[pool.submit(_ask_position, da, mandatory=True)] = da
+            for fut, agent in futures.items():
+                try:
+                    result = fut.result(timeout=timeout_s)
+                except _FutTimeout:
+                    ref = getattr(agent, "ref", None) or AgentRef(instance_id=run.instance_id)
+                    log.warning("agent %s timed out (→ abstain)", ref.display_name)
+                    result = {"agent_id": str(ref.agent_id),
+                              "display_name": ref.display_name,
+                              "weight": ref.weight, "position": "abstain"}
+                    fut.cancel()
+                except Exception as e:  # noqa: BLE001
+                    ref = getattr(agent, "ref", None) or AgentRef(instance_id=run.instance_id)
+                    log.warning("agent %s errored (→ abstain): %s", ref.display_name, e)
+                    result = {"agent_id": str(ref.agent_id),
+                              "display_name": ref.display_name,
+                              "weight": ref.weight, "position": "abstain"}
+                _apply(result)
 
     # S3: optionally compress when there are many positions.
     digest: dict | None = None

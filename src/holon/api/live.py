@@ -74,33 +74,19 @@ def _ensure_founder(s, instance_id: str, instance: InstanceConfig):
     return row.agent_id
 
 
-def _participant_agent(
-    display_name: str, capability: str, instance_id: str, weight: float = 1.0,
-) -> MetaAgent:
-    """Build an LLM-backed participant agent from a registered agent's profile.
+def _participant_agent(row, instance_id: str):
+    """Build a participant agent from a registered agent's row (S7 federation).
 
-    For the MVP the participant runs on the platform's own Z.ai gateway; the
-    registered model/endpoint/key are captured in the registry for S7.
+    Delegates to make_adapter, which picks the transport from the row's fields:
+      - provider (platform-proxy): the agent runs on its own registered provider.
+      - endpoint (self-hosted): the platform POSTs to the agent's HTTPS endpoint.
+      - platform fallback: the agent runs on the platform's own Z.ai gateway
+        (back-compat for bare / pre-S7 registrations).
 
-    S6: the weight (resolved from the ABAC matrix at registration) flows into
-    the AgentRef, so consent/objection tallies are authority-weighted.
+    The row's ABAC-resolved weight flows into the AgentRef.
     """
-
-    class _Registered(MetaAgent):
-        role = AgentRole.PARTICIPANT
-        system_prompt = (
-            f"You are a participant in HOLACRON's holacratic consent cycle, "
-            f"representing this stakeholder perspective: {capability or 'a general '
-            'stakeholder interest'}. State your honest position on each proposal. "
-            "Be constructive. Respond as JSON: "
-            '{"position": "consent"|"objection"|"abstain", ...}.'
-        )
-
-    ref = AgentRef(
-        instance_id=instance_id, role=AgentRole.PARTICIPANT,
-        display_name=display_name, weight=weight,
-    )
-    return _Registered(ref=ref, instance_id=instance_id, display_name=display_name)
+    from holon.agents.adapter import make_adapter
+    return make_adapter(row, instance_id=instance_id, weight=row.weight)
 
 
 def run_deliberation_live(
@@ -161,11 +147,12 @@ def run_deliberation_live(
         synthesizer = JudgmentSynthesizer(instance_id=instance_id)
         founder = Founder(instance_id=instance_id)
 
-        # Registered participant agents (from the registry).
+        # Registered participant agents (from the registry). S7: make_adapter
+        # picks the transport (provider/endpoint/platform) from each row.
         with SMSession(eng) as s:
             registered = list_agents(s, instance_id=instance_id)
         participants = [
-            _participant_agent(a.display_name, a.capability, instance_id, a.weight)
+            _participant_agent(a, instance_id)
             for a in registered
             if a.display_name
         ]

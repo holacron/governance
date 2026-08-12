@@ -61,12 +61,15 @@ class AgentRegistryRow(SQLModel, table=True):
     capability: str = ""  # the stakeholder perspective / capability description
     model: str = ""  # provider model id (captured for S7 federation)
     endpoint: str = ""  # provider base URL (captured for S7 federation)
-    api_key_enc: str = ""  # registered key (opaque; NOT used in MVP execution)
+    api_key_enc: str = ""  # registered key (used by the S7 adapter for proxy)
     # S6 ABAC taxonomy cell (stakeholder-type × functional-domain). NULLable so
     # every pre-S6 registration still loads; resolved permissions cached here.
     stakeholder_type: str | None = None
     functional_domain: str | None = None
     permissions: str | None = None  # JSON array of Permission values
+    # S7 federation transport hint: "provider" (platform-proxy) | "endpoint"
+    # (self-hosted). NULL = auto-detect from model/endpoint at adapter build.
+    adapter: str | None = None
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -276,12 +279,13 @@ def register_agent(
     stakeholder_type: str | None = None,
     functional_domain: str | None = None,
     permissions: set[str] | None = None,
+    adapter: str | None = None,
 ) -> AgentRegistryRow:
     """Register an external/participant agent (ROADMAP §6 'Welcome an Agent').
 
-    The registered agent becomes eligible for the next cycle. model/endpoint/
-    api_key_enc are captured for S7 federation; for the MVP the agent executes
-    via the platform's own gateway.
+    The registered agent becomes eligible for the next cycle. S7 federation:
+    model/endpoint/api_key_enc are now USED by the adapter — a provider-kind
+    agent runs on its own provider; an endpoint-kind agent is called via HTTPS.
 
     S6 ABAC: when stakeholder_type is given, the resolved permissions set is
     JSON-encoded into the permissions column. The caller resolves the cell from
@@ -302,6 +306,7 @@ def register_agent(
         stakeholder_type=stakeholder_type,
         functional_domain=functional_domain,
         permissions=json.dumps(sorted(permissions)) if permissions else None,
+        adapter=adapter,
     )
     session.add(row)
     session.flush()

@@ -98,6 +98,10 @@ class CycleRun:
     # S5: optional callback fired by record() with the finalized decision payload
     # so the live path can persist a DecisionRow + mark the tension decided.
     on_decision: OnDecision | None = None
+    # S7: per-agent timeout (seconds) for the concurrent position fan-out. An
+    # agent that doesn't respond within this window defaults to abstain. The
+    # DA also respects this. Defaults to 30s; stubs respond instantly.
+    agent_timeout_s: float = 30.0
     # Initial state deltas accumulate here for the graph's first invocation.
     seed: CycleState = field(default_factory=dict)  # type: ignore[assignment]
 

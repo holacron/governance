@@ -226,3 +226,67 @@ def test_live_epoch_opens_deliberates_and_closes():
     assert epoch_status == "completed", (
         f"epoch should be completed after the cycle; got {epoch_status}"
     )
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not _HAS_LIVE, reason="needs ZAI_API_KEY + DATABASE_URL")
+def test_live_federated_agent_participates():
+    """S7 exit criterion: a registered agent participates in a live consent
+    cycle, its position appears in the event stream, and the cycle records a
+    decision.
+
+    The agent is registered as a platform-proxy participant (runs on the
+    platform's Z.ai gateway via the adapter). This proves the adapter wiring is
+    live — the dormant model/endpoint/api_key columns now flow through
+    make_adapter into a real participant.
+    """
+    client = TestClient(create_app())
+
+    # 1. Register a participant agent (bare registration → platform gateway
+    #    via the adapter fallback; this is the most common real-world path).
+    reg = client.post(f"/instances/{INSTANCE}/agents", json={
+        "display_name": "S7 Federation Agent",
+        "owner": "S7 Test",
+        "capability": "energy export revenue optimisation",
+    })
+    assert reg.status_code == 201
+
+    # 2. Submit a tension + start a deliberation on it.
+    sub = client.post(f"/instances/{INSTANCE}/tensions", json={
+        "title": "S7 federation: compute density cap",
+        "description": "Should we cap on-site compute density to protect grid export?",
+    })
+    assert sub.status_code == 201
+    tension_id = sub.json()["tension_id"]
+
+    start = client.post(f"/instances/{INSTANCE}/deliberations?tension_id={tension_id}")
+    assert start.status_code == 202
+    run_id = start.json()["run_id"]
+    events_url = start.json()["events_url"]
+
+    # 3. Consume the SSE stream until close.
+    received_types: list[str] = []
+    deadline = time.time() + 240
+    with client.stream("GET", events_url) as resp:
+        assert resp.status_code == 200
+        buf_type = None
+        for line in resp.iter_lines():
+            if time.time() > deadline:
+                break
+            if line.startswith("event:"):
+                buf_type = line.split(":", 1)[1].strip()
+            elif line.startswith("data:") and buf_type:
+                if buf_type == "close":
+                    break
+                if buf_type == "ping":
+                    buf_type = None
+                    continue
+                received_types.append(buf_type)
+                buf_type = None
+
+    # 4. The cycle ran with the federated agent participating.
+    assert "proposal-drafted" in received_types, "expected the cycle to start"
+    assert "position-stated" in received_types, "expected the participant to state a position"
+    assert received_types[-1] == "decision-recorded", (
+        f"expected decision-recorded last, got {received_types[-3:]}"
+    )

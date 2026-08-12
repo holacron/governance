@@ -177,3 +177,95 @@ def test_on_decision_none_is_safe():
     # on_decision defaults to None; cycle must complete normally.
     final = run_cycle(run)
     assert final["outcome"] == "adopted"
+
+
+# ── S7.5: concurrent round execution with timeout → abstain ─────────────────
+
+
+class _SlowAgent:
+    """An agent that sleeps longer than the timeout, simulating a hung/slow
+    external agent. Conforms to the Agent Protocol (has .ref + .respond)."""
+
+    def __init__(self, delay: float, *, display_name: str = "slow"):
+        from holon.schema import AgentRef
+        self.ref = AgentRef(instance_id=INSTANCE, display_name=display_name, weight=1.0)
+        self._delay = delay
+
+    def respond(self, prompt: str, context: str = "", **kwargs) -> str:
+        import time
+        time.sleep(self._delay)
+        return '{"position": "consent"}'
+
+
+class _ErrorAgent:
+    """An agent that raises, simulating a provider/endpoint failure."""
+
+    def __init__(self, *, display_name: str = "error"):
+        from holon.schema import AgentRef
+        self.ref = AgentRef(instance_id=INSTANCE, display_name=display_name, weight=1.0)
+
+    def respond(self, prompt: str, context: str = "", **kwargs) -> str:
+        raise RuntimeError("provider is down")
+
+
+def test_slow_agent_defaults_to_abstain_within_timeout():
+    """An agent that exceeds agent_timeout_s defaults to abstain; the cycle
+    doesn't stall waiting for it."""
+    arch = _arch(_PROP)
+    da = _da('{"objection": false}')
+    slow = _SlowAgent(delay=5.0, display_name="slow-external")
+    tension = Tension(instance_id=INSTANCE, raised_by=arch.ref, title="t", description="d")
+    run = CycleRun(
+        instance_id=INSTANCE, tension=tension, participants=[arch.ref],
+        governance=GovernanceConfig(),
+        proposal_architect=arch, devils_advocate=da,
+        participant_agents=[slow], agent_timeout_s=0.5,
+        ledger_sink=lambda et, _p: None,
+    )
+    final = run_cycle(run)
+    # The slow agent abstained; the DA consented → adopted.
+    assert final["outcome"] == "adopted"
+    positions = final["positions"]
+    slow_pos = next(p for p in positions if p["display_name"] == "slow-external")
+    assert slow_pos["position"] == "abstain"
+
+
+def test_error_agent_defaults_to_abstain():
+    """An agent that raises (provider error) defaults to abstain, not crash."""
+    arch = _arch(_PROP)
+    da = _da('{"objection": false}')
+    err = _ErrorAgent(display_name="broken")
+    tension = Tension(instance_id=INSTANCE, raised_by=arch.ref, title="t", description="d")
+    run = CycleRun(
+        instance_id=INSTANCE, tension=tension, participants=[arch.ref],
+        governance=GovernanceConfig(),
+        proposal_architect=arch, devils_advocate=da,
+        participant_agents=[err], agent_timeout_s=5.0,
+        ledger_sink=lambda et, _p: None,
+    )
+    final = run_cycle(run)
+    assert final["outcome"] == "adopted"
+    positions = final["positions"]
+    err_pos = next(p for p in positions if p["display_name"] == "broken")
+    assert err_pos["position"] == "abstain"
+
+
+def test_fast_agent_real_position_preserved():
+    """A fast agent (responds within timeout) records its real position, not
+    abstain — the timeout only catches the slow ones."""
+    arch = _arch(_PROP)
+    da = _da('{"objection": false}')
+    fast = StubAgent('{"position": "objection", "criterion": "not-safe-to-try", "reason": "x"}',
+                     display_name="fast-objector")
+    tension = Tension(instance_id=INSTANCE, raised_by=arch.ref, title="t", description="d")
+    run = CycleRun(
+        instance_id=INSTANCE, tension=tension, participants=[arch.ref],
+        governance=GovernanceConfig(),
+        proposal_architect=arch, devils_advocate=da,
+        participant_agents=[fast], agent_timeout_s=5.0,
+        ledger_sink=lambda et, _p: None,
+    )
+    final = run_cycle(run)
+    positions = final["positions"]
+    fast_pos = next(p for p in positions if p["display_name"] == "fast-objector")
+    assert fast_pos["position"] == "objection"

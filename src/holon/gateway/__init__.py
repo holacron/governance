@@ -1,12 +1,15 @@
 """The LLM gateway — THE core primitive of the harness.
 
 `call_agent()` is the single function the whole platform (and the bootstrap
-runner) builds on. It routes to Z.ai (Anthropic-compatible), tracks cost against
-the per-run cap (ROADMAP §2.5), caches identical prompts, and satisfies the
-`Agent` Protocol so an LLM-backed role is interchangeable with a stub.
+runner) builds on. It routes to a provider (Z.ai/Anthropic-compatible or
+OpenAI-compatible), tracks cost against the per-run cap (ROADMAP §2.5), caches
+identical prompts, and satisfies the `Agent` Protocol so an LLM-backed role is
+interchangeable with a stub.
 
-Sprint 5/7 extend this to multi-provider routing + federation; today it targets
-the one verified provider (Z.ai / GLM).
+S7 federation: the gateway is now multi-provider. A registered agent with its
+own model/endpoint/key gets a per-agent gateway via `from_provider()`, so
+external-model agents participate in a cycle on their own provider. The
+platform default gateway (Z.ai) is unchanged.
 """
 
 from __future__ import annotations
@@ -24,6 +27,13 @@ from anthropic import (
     OverloadedError,
     RateLimitError,
 )
+from openai import OpenAI as _OpenAIClient
+from openai import (
+    APIConnectionError as _OAConnectionError,
+    APITimeoutError as _OATimeoutError,
+    InternalServerError as _OAInternalServerError,
+    RateLimitError as _OARateLimitError,
+)
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -39,12 +49,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Rough per-1M-token USD pricing for cost-cap accounting (ROADMAP §2.5).
-# Z.ai / GLM list pricing is volatile; these are conservative estimates used
+# Provider list pricing is volatile; these are conservative estimates used
 # ONLY to enforce HARNESS_COST_CAP_USD — not for billing. Tunable via env later.
 _MODEL_PRICING_USD_PER_MTOK: dict[str, tuple[float, float]] = {
     # (input, output) per 1M tokens
     "glm-5-turbo": (0.50, 1.50),
     "glm-5.2": (1.00, 3.00),
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "claude-3-5-sonnet": (3.00, 15.00),
+    "claude-3-5-haiku": (0.80, 4.00),
     # Fallback for unknown models: assume the cheapest known tier.
 }
 _FALLBACK_PRICING = (1.00, 3.00)
@@ -63,8 +79,20 @@ _RETRYABLE = (
     APIConnectionError,       # network/DNS
     APITimeoutError,          # request timed out
 )
+_RETRYABLE_OPENAI = (
+    _OARateLimitError,
+    _OAInternalServerError,
+    _OAConnectionError,
+    _OATimeoutError,
+)
 _LLM_RETRY = retry(
     retry=retry_if_exception_type(_RETRYABLE),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    reraise=True,
+)
+_LLM_RETRY_OPENAI = retry(
+    retry=retry_if_exception_type(_RETRYABLE_OPENAI),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=8),
     reraise=True,
@@ -101,23 +129,87 @@ class LLMGateway:
 
     A fresh gateway = a fresh run. The running cost is checked against the cap
     on every call so a runaway loop aborts before burning the budget (§2.5).
+
+    S7 federation: `provider` selects the HTTP shape ("anthropic" | "openai");
+    both Z.ai and Anthropic speak the Anthropic protocol, OpenAI speaks its own.
+    A per-agent override of `model`/`api_key`/`base_url` routes a registered
+    agent to its own provider via `from_provider()`.
     """
 
     config: RuntimeConfig
-    _client: Anthropic | None = field(default=None, init=False)
+    provider: str = "anthropic"
+    # Optional per-gateway overrides (set by from_provider; None = use config).
+    _override_api_key: str | None = field(default=None, init=False)
+    _override_base_url: str | None = field(default=None, init=False)
+    _override_model: str | None = field(default=None, init=False)
+    _override_cap_usd: float | None = field(default=None, init=False)
+    _client: object | None = field(default=None, init=False)
     _cache: dict[str, _CacheEntry] = field(default_factory=dict, init=False)
     spent_usd: float = field(default=0.0, init=False)
 
     def __post_init__(self) -> None:
-        if not self.config.has_provider:
+        provider = self.provider.lower()
+        if provider not in ("anthropic", "openai"):
+            raise ValueError(f"unknown provider: {self.provider!r}")
+        self.provider = provider
+        api_key = self._override_api_key or self._platform_api_key()
+        if not api_key:
             raise RuntimeError(
-                "No LLM provider configured. Set ZAI_API_KEY (or OPENAI/ANTHROPIC) in .env."
+                "No LLM provider API key configured. Set ZAI_API_KEY / "
+                "OPENAI_API_KEY / ANTHROPIC_API_KEY, or pass api_key to from_provider()."
             )
-        # Z.ai is Anthropic-compatible; point the SDK at its base URL.
-        self._client = Anthropic(
-            api_key=self.config.zai_api_key,
-            base_url=self.config.zai_base_url,
-        )
+        base_url = self._override_base_url or self._platform_base_url()
+        if provider == "openai":
+            self._client = _OpenAIClient(api_key=api_key, base_url=base_url)
+        else:
+            self._client = Anthropic(api_key=api_key, base_url=base_url)
+
+    # ── per-agent factory (S7 federation) ─────────────────────────────────────
+
+    @classmethod
+    def from_provider(
+        cls,
+        provider: str,
+        *,
+        api_key: str,
+        base_url: str | None = None,
+        model: str | None = None,
+        cap_usd: float | None = None,
+        config: RuntimeConfig | None = None,
+    ) -> LLMGateway:
+        """Build a per-agent gateway pointed at an arbitrary provider+key.
+
+        Reuses the platform's cost-cap/retry/cache machinery but routes to the
+        agent's own provider client. This is the platform-proxy transport: the
+        platform holds the agent's key and calls the provider on its behalf.
+        """
+        from holon.config import load_runtime_config
+        cfg = config or load_runtime_config()
+        # Build without __init__ so we can set overrides before __post_init__
+        # builds the client (the platform config may have no keys of its own).
+        gw = object.__new__(cls)
+        gw.config = cfg
+        gw.provider = provider
+        gw._override_api_key = api_key
+        gw._override_base_url = base_url
+        gw._override_model = model
+        gw._override_cap_usd = cap_usd
+        gw._client = None
+        gw._cache = {}
+        gw.spent_usd = 0.0
+        gw.__post_init__()
+        return gw
+
+    def _platform_api_key(self) -> str:
+        if self.provider == "openai":
+            return self.config.openai_api_key
+        # anthropic: prefer Z.ai key, fall back to native Anthropic key.
+        return self.config.zai_api_key or self.config.anthropic_api_key
+
+    def _platform_base_url(self) -> str:
+        if self.provider == "openai":
+            return self.config.openai_base_url
+        return self.config.zai_base_url
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -149,7 +241,7 @@ class LLMGateway:
             CostCapExceeded: if this call would push the run over the cap.
         """
         role_str = role.value if hasattr(role, "value") else str(role)
-        chosen = (model or self._default_model()).strip()
+        chosen = (model or self._override_model or self._default_model()).strip()
         full_system = system or self._role_preamble(role_str)
 
         cache_key = self._cache_key(chosen, full_system, prompt)
@@ -162,19 +254,20 @@ class LLMGateway:
             )
 
         # Pre-flight cost check: estimate worst-case (full max_tokens) output.
+        cap = self._override_cap_usd if self._override_cap_usd is not None else (
+            self.config.harness_cost_cap_usd
+        )
         est_cost = self._estimate_cost(chosen, len(prompt), max_tokens)
-        if self.spent_usd + est_cost > self.config.harness_cost_cap_usd:
+        if self.spent_usd + est_cost > cap:
             raise CostCapExceeded(
                 f"Call would push run to ~${self.spent_usd + est_cost:.4f} "
-                f"(cap ${self.config.harness_cost_cap_usd:.2f}). Aborting per §2.5."
+                f"(cap ${cap:.2f}). Aborting per §2.5."
             )
 
         resp = self._call_llm(
             chosen, full_system, prompt, max_tokens, temperature
         )
-        text = self._extract_text(resp)
-        in_tok = getattr(resp.usage, "input_tokens", 0)
-        out_tok = getattr(resp.usage, "output_tokens", 0)
+        text, in_tok, out_tok = self._extract_response(resp)
         cost = self._cost(chosen, in_tok, out_tok)
         self.spent_usd += cost
 
@@ -190,19 +283,24 @@ class LLMGateway:
             input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost, cached=False,
         )
 
-    # ── LLM transport (H5: retry + timeout) ──────────────────────────────────
+    # ── LLM transport (H5: retry + timeout; S7: multi-provider) ───────────────
 
     def _call_llm(
         self, model: str, system: str, prompt: str,
         max_tokens: int, temperature: float,
     ):
-        """Single retry-wrapped, timeout-bound messages.create call.
-
-        Retries transient failures (429/5xx/overload/conn/timeout) with exp
-        backoff (3 attempts, 2–8s). Non-retryable errors propagate immediately.
-        Bound to a 60s per-request timeout so a hung provider connection can't
-        stall the deliberation indefinitely.
+        """Single retry-wrapped, timeout-bound call. Branches on provider:
+        Anthropic (Z.ai) via messages.create, OpenAI via chat.completions.create.
+        Retries transient failures with exp backoff (3 attempts, 2–8s).
         """
+        if self.provider == "openai":
+            return self._call_openai(model, system, prompt, max_tokens, temperature)
+        return self._call_anthropic(model, system, prompt, max_tokens, temperature)
+
+    def _call_anthropic(
+        self, model: str, system: str, prompt: str,
+        max_tokens: int, temperature: float,
+    ):
         @_LLM_RETRY
         def _create():
             return self._client.messages.create(
@@ -214,6 +312,43 @@ class LLMGateway:
                 timeout=_LLM_TIMEOUT_S,
             )
         return _create()
+
+    def _call_openai(
+        self, model: str, system: str, prompt: str,
+        max_tokens: int, temperature: float,
+    ):
+        @_LLM_RETRY_OPENAI
+        def _create():
+            return self._client.chat.completions.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                timeout=_LLM_TIMEOUT_S,
+            )
+        return _create()
+
+    @staticmethod
+    def _extract_response(resp) -> tuple[str, int, int]:
+        """Extract (text, input_tokens, output_tokens) from either provider's
+        response shape. Anthropic: resp.content[].text + resp.usage.{in,out}.
+        OpenAI: resp.choices[0].message.content + resp.usage.{prompt,completion}."""
+        # OpenAI shape.
+        choices = getattr(resp, "choices", None)
+        if choices:
+            text = (getattr(choices[0].message, "content", "") or "").strip()
+            usage = getattr(resp, "usage", None)
+            in_tok = getattr(usage, "prompt_tokens", 0) if usage else 0
+            out_tok = getattr(usage, "completion_tokens", 0) if usage else 0
+            return text, in_tok, out_tok
+        # Anthropic shape.
+        text = LLMGateway._extract_text(resp)
+        in_tok = getattr(getattr(resp, "usage", None), "input_tokens", 0)
+        out_tok = getattr(getattr(resp, "usage", None), "output_tokens", 0)
+        return text, in_tok, out_tok
 
     # ── helpers ───────────────────────────────────────────────────────────────
 

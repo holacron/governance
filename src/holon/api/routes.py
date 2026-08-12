@@ -75,6 +75,9 @@ class AgentRegistration(BaseModel):
     # S6 ABAC taxonomy cell (optional; omitted = pre-S6 participant default).
     stakeholder_type: str | None = None
     functional_domain: str | None = None
+    # S7 federation transport: "provider" (platform-proxy) | "endpoint" (self-hosted).
+    # Omitted = auto-detect from model/endpoint fields.
+    adapter: str | None = None
 
 
 class AgentOut(BaseModel):
@@ -157,11 +160,12 @@ async def register(instance_id: str, body: AgentRegistration) -> JSONResponse:
             s, instance_id=instance_id,
             display_name=body.display_name, owner=body.owner,
             capability=body.capability, model=body.model, endpoint=body.endpoint,
-            api_key_enc=body.api_key or "",  # opaque; not used in MVP execution
+            api_key_enc=body.api_key or "",  # S7: used by the adapter (provider proxy)
             stakeholder_type=stakeholder_type,
             functional_domain=functional_domain,
             permissions=perms,
             weight=weight,
+            adapter=body.adapter,
         )
         s.commit()
         return JSONResponse(
@@ -169,7 +173,8 @@ async def register(instance_id: str, body: AgentRegistration) -> JSONResponse:
              "status": "registered", "eligible": True,
              "stakeholder_type": stakeholder_type,
              "permissions": sorted(perms) if perms else None,
-             "weight": weight},
+             "weight": weight,
+             "adapter": body.adapter},
             status_code=201,
         )
 
