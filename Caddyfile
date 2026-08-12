@@ -1,0 +1,48 @@
+# Caddy reverse proxy for the HOLACRON engage API.
+#
+# Caddy automatically provisions and renews a Let's Encrypt TLS certificate
+# for api.kimberim.com (requires the DNS A-record to point at this server
+# and ports 80+443 to be reachable from the internet).
+#
+# No manual cert management needed — this is the whole HTTPS config.
+
+api.kimberim.com {
+	# Proxy all requests to the FastAPI app inside the compose network.
+	reverse_proxy api:8787
+
+	# SSE support: the /deliberations/{run_id}/events stream holds
+	# connections open for the duration of a consent cycle. Disable
+	# buffering and set a long timeout so Caddy doesn't kill the stream.
+	encode {
+		# Don't gzip SSE (it would buffer the event stream).
+		exclude /deliberations/*
+	}
+
+	# Generous timeouts for long deliberation streams (up to ~30 min).
+	servers {
+		timeouts {
+			read_body 30s
+			read_header 10s
+			write 0s
+			idle 30m
+		}
+	}
+
+	# Security headers.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Access + error logs.
+	log {
+		output stdout
+		format console
+	}
+}
+
+# Optional: a catch-all that redirects bare HTTP to HTTPS.
+:80 {
+	respond "HOLACRON engage API. See https://api.kimberim.com/health" 200
+}

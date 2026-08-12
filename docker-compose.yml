@@ -1,0 +1,68 @@
+# HOLACRON engage API — full production stack.
+#
+# Three services:
+#   postgres  — PostgreSQL 17 with a persistent volume.
+#   api       — the HOLACRON FastAPI app (builds from ./Dockerfile).
+#   caddy     — reverse proxy with automatic HTTPS (Let's Encrypt) for
+#               api.kimberim.com, terminating TLS and forwarding to api:8787.
+#
+# Bring up:   docker compose up -d --build
+# Logs:       docker compose logs -f api
+# Tear down:  docker compose down   (add -v to wipe the database volume)
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: holacron-postgres
+    environment:
+      POSTGRES_DB: holon
+      POSTGRES_USER: holon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U holon -d holon"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    # Do NOT expose 5432 publicly. Remove these two lines unless you need
+    # local host access for debugging (e.g. psql from the server shell).
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    build: .
+    container_name: holacron-api
+    environment:
+      # The app loads these from the environment (dotenv override=False,
+      # so container env wins). See deploy/.env.production.example.
+      DATABASE_URL: postgresql://holon:${POSTGRES_PASSWORD}@postgres:5432/holon
+      ZAI_API_KEY: ${ZAI_API_KEY:?set ZAI_API_KEY in .env}
+      ZAI_BASE_URL: ${ZAI_BASE_URL:-https://api.z.ai/api/anthropic}
+      HARNESS_MODELS: ${HARNESS_MODELS:-GLM-5-Turbo}
+      HARNESS_COST_CAP_USD: ${HARNESS_COST_CAP_USD:-5.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # No host ports — Caddy is the only public entry point.
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: holacron-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

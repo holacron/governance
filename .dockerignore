@@ -1,0 +1,34 @@
+# Exclude dev/runtime artifacts from the Docker build context.
+# Keeps builds fast and prevents secrets from entering the image.
+
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.github/
+
+# Tests + dev tooling (not needed in production image).
+tests/
+.ruff_cache/
+.pytest_cache/
+
+# Secrets — NEVER bake into the image. Pass via docker-compose environment.
+.env
+.env.*
+!.env.production.example
+
+# Editor / OS cruft.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# The marketing site lives in a sibling repo; not part of the API image.
+kimberim-site/
+
+# Docker artefacts don't need to be in the context (compose handles them).
+docker-compose.yml
+Dockerfile
+.dockerignore
