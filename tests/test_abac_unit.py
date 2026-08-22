@@ -7,8 +7,8 @@ permission-gate integration is covered by test_api_unit.py / test_backlog_unit.
 
 from __future__ import annotations
 
-from holon.config import ABACMatrix, resolve_cell
-from holon.schema import Permission
+from olon.config import ABACMatrix, resolve_cell
+from olon.schema import Permission
 
 
 def test_resolve_cell_returns_defaults_for_known_stakeholder():
@@ -84,7 +84,7 @@ def test_resolve_cell_null_matrix_back_compat():
 
 def test_kimberim_matrix_loads_from_yaml():
     """The KIMBERIM instance config carries the full seeded ABAC matrix."""
-    from holon.config import load_instance_config
+    from olon.config import load_instance_config
 
     ic = load_instance_config("kimberim")
     assert ic.abac.weights.get("founder") == 2.0

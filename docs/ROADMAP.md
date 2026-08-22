@@ -1,34 +1,34 @@
-# HOLACRON — Holacratic Cron Governance Roadmap
+# OLOCRON — the governance roadmap
 
-> A federated, holacratic platform where agents (and humans) from many
+> A federated, consent-governed platform where agents (and humans) from many
 > stakeholders deliberate and reach **consent** on the goals and direction of any
 > collaborative venture — and the foundation pattern for a new class of venture.
 
 **Status:** MVP complete (Sprints 0–4); S5+ in progress.
 **Decision rule:** consent-first (§2). **Runtime:** Python + LangGraph.
-**First Holon:** [KIMBERIM](https://kimberim.com) (Kimberley Rim Grid) — see
+**First Olon:** [KIMBERIM](https://kimberim.com) (Kimberley Rim Grid) — see
 `instances/kimberim/`.
 
-> **What HOLACRON is** (generic): the platform — Holacratic Cron Governance.
-> **What a Holon is** (specific): a deployment of HOLACRON for one venture,
+> **What OLOCRON is** (generic): the platform.
+> **What a Olon is** (specific): a deployment of OLOCRON for one venture,
 > with its own branding, stakeholders, taxonomy presets, and decision backlog.
-> KIMBERIM is the first Holon, not the product.
+> KIMBERIM is the first Olon, not the product.
 
 ---
 
 ## 1. Vision
 
-HOLACRON (Holacratic Cron Governance) is a **reusable platform for governed
+OLOCRON is a **reusable platform for governed
 multi-stakeholder collaboration between AI agents and humans.** A participant
-can **"welcome an agent to the chat"** on a Holon's engage surface; that agent
-joins a holacratic group of agents representing all participants. Together —
+can **"welcome an agent to the chat"** on a Olon's engage surface; that agent
+joins a consent-governed group of agents representing all participants. Together —
 internal staff agents and external participant agents — they must reach
 **agreement on the goals and the best course of action for the venture.**
 
 This is unusual and unique: a venture whose strategic decisions are made by a
-federated collective of agents governed by holacracy rather than by a single
+federated collective of agents governed by consent rather than by a single
 founder or board. The intent is that this becomes **the operating model for many
-future ventures** — each one a *Holon* governed by HOLACRON.
+future ventures** — each one a *Olon* governed by OLOCRON.
 
 ### Why this is hard (and worth doing)
 
@@ -70,7 +70,7 @@ ledger.
 **The crucial separation:** the affirmative decision is made purely by the agents
 deliberating as peers; the founder sits *outside* that computation but holds an
 override. The founder can stop something, but **cannot force a "yes."** This
-keeps the holacratic collective authentic: the agents really do decide among
+keeps the consent-governed collective authentic: the agents really do decide among
 themselves.
 
 ### 2.3 Founder veto
@@ -121,7 +121,7 @@ is **not** reputation-weighted and not overridable by the participant body.
 
 ---
 
-## 3. The Holacratic Consent Cycle (the protocol)
+## 3. The OLOCRON Consent Cycle (the protocol)
 
 Every decision runs through this state machine (mapped from Integrative Decision
 Making):
@@ -153,7 +153,7 @@ Making):
 ## 4. How we scale to hundreds: circles & rep-links
 
 We do **not** run 100 agents in one synchronous meeting (O(n²) chaos). We use
-holacracy's native scaling mechanism:
+consent governance's native scaling mechanism:
 
 - Agents are grouped into **domain circles** — e.g. for KIMBERIM: *Energy,
   Compute, Finance, Ethics, Community, Cultural/heritage*. Other instances define
@@ -163,7 +163,7 @@ holacracy's native scaling mechanism:
 - A **Cross-Circle** runs consent over the circle-level positions.
 
 This collapses "100 agents agreeing" into "5 circles of 20 agreeing internally,
-then 5 reps agreeing at the top." This is literally holacracy's scaling rule, and
+then 5 reps agreeing at the top." This is literally consent governance's scaling rule, and
 it is what makes the vision tractable and affordable.
 
 ---
@@ -176,7 +176,7 @@ external participant agents. Roles are mapped to the phases they're needed.
 | # | Role | Purpose | Phase |
 |---|------|---------|-------|
 | 1 | **Orchestrator (Conductor)** | Runs the meeting cycle; calls agents in order per round | MVP |
-| 2 | **Holacracy Facilitator** | Enforces governance; validates proposal format; rules on process | MVP |
+| 2 | **Facilitator** | Enforces governance; validates proposal format; rules on process | MVP |
 | 3 | **Secretary / Vote-Taker** | Tallies votes; writes the immutable ledger; captures objections | MVP |
 | 4 | **Proposal Architect** | Drafts proposals from "tensions" into the standard format | MVP |
 | 5 | **Devil's Advocate (Red Team)** | Actively hunts failure modes & objections for every proposal | MVP |
@@ -254,7 +254,7 @@ KIMBERIM instance's first decision.
 | **10** | Reputation, trust & anti-abuse *(consumes S9)* | Reputation scoring from S9 evidence; stake/weight; spam & low-effort detection; integration-tension checks; Ethics & Safety Guardian safety veto wired; gaming defenses (decay, recency, costly signalling) | Adversarial/junk agents detected and de-weighted/blocked; override weight derived from S9 |
 | **11** | Verification & evaluation | Verifier agent runs checks/tests on proposal claims (constraints, simulations); evidence-backed objections | Proposals carry verifiable claims; objections cite evidence |
 | **12** | Governance hardening, audit & replay | Immutable ledger; full replay of any decision; audit log; observability dashboards (cost, latency, consent-rate); roles/permissions; secrets review | Every decision reconstructable; SOC-ready audit trail |
-| **13** | Scale-out to hundreds | Async fan-out at scale; caching; model routing (cheap/expensive tiering); cost/latency budgets; load-test 100+ agents; UX polish; the holacracy "constitution" doc | A 100+ agent run completes inside cost/latency budget |
+| **13** | Scale-out to hundreds | Async fan-out at scale; caching; model routing (cheap/expensive tiering); cost/latency budgets; load-test 100+ agents; UX polish; the consent governance "constitution" doc | A 100+ agent run completes inside cost/latency budget |
 
 **Dependency note:** S9 is the *evidence layer* beneath S10 — reputation weight is
 meaningless without a legitimate evidence base, so S9 precedes S10. S5 (taxonomy)
@@ -298,7 +298,7 @@ accountability and skin-in-the-game.
 ### 9.2 The critical definition: obstructive ≠ objects-a-lot
 
 > **An agent that frequently raises *valid, integrable* objections is doing
-> holacracy *correctly*.** Punishing high objectors would punish the exact
+> consent governance *correctly*.** Punishing high objectors would punish the exact
 > behaviour that makes consent governance function, and agents would learn to
 > rubber-stamp to protect their reputation — defeating the entire purpose.
 
@@ -370,13 +370,12 @@ participant.** The founder is never fully removed from the loop.
 
 ## 13. Glossary
 
-- **HOLACRON** — the platform: Holacratic Cron Governance. A reusable,
-  consent-governed harness that orchestrates collectives of agents and humans.
-- **Holon** — a deployment of HOLACRON for one venture: branding, stakeholders,
+- **OLOCRON** — the platform. A reusable, consent-governed harness that orchestrates collectives of agents and humans.
+- **Olon** — a deployment of OLOCRON for one venture: branding, stakeholders,
   taxonomy presets, decision backlog. (Named for Koestler's concept of a whole
   that is itself part of a larger whole — a node in a holarchy.) KIMBERIM is the
-  first Holon.
-- **Holacracy** — a decentralised governance system; authority sits in roles and
+  first Olon.
+- **Consent governance** — a decentralised governance system; authority sits in roles and
   circles, not managers, and decisions are made by consent.
 - **Consent** — a decision passes when there is no reasoned objection ("safe to
   try", no regression to a role).

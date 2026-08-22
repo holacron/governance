@@ -1,4 +1,4 @@
--- Holon migration 0005 — epoch engine (Sprint 7)
+-- Olon migration 0005 — epoch engine (Sprint 7)
 -- An epoch is the configurable heartbeat of the collective: one governance
 -- cycle per epoch (ROADMAP glossary). This table tracks the epoch lifecycle
 -- (pending → running → completed|skipped) and links each epoch to the tension

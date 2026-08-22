@@ -19,8 +19,8 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-from holon.api.feed import FeedBroker
-from holon.api.server import create_app
+from olon.api.feed import FeedBroker
+from olon.api.server import create_app
 
 load_dotenv()
 
@@ -158,8 +158,8 @@ def test_submit_tension_rejected_for_observe_only_agent(client):
     # agent with permissions lacking submit. We build that via the store layer
     # to isolate the gate logic (the gate is what we're testing here).
     from sqlmodel import Session as SMSession
-    from holon.config import load_runtime_config
-    from holon.store import make_engine, register_agent
+    from olon.config import load_runtime_config
+    from olon.store import make_engine, register_agent
     rt = load_runtime_config()
     eng = make_engine(rt.database_url)
     with SMSession(eng) as s:
@@ -183,8 +183,8 @@ def test_submit_tension_rejected_for_observe_only_agent(client):
 def test_submit_tension_allowed_for_submit_agent(client):
     """S6 ABAC submission gate: an agent WITH submit passes → 201."""
     from sqlmodel import Session as SMSession
-    from holon.config import load_runtime_config
-    from holon.store import make_engine, register_agent
+    from olon.config import load_runtime_config
+    from olon.store import make_engine, register_agent
     rt = load_runtime_config()
     eng = make_engine(rt.database_url)
     with SMSession(eng) as s:
@@ -219,8 +219,8 @@ def test_submit_tension_null_permissions_back_compat(client):
     """S6 back-compat: an agent registered with no taxonomy (NULL permissions)
     gets the participant default → submission passes (201)."""
     from sqlmodel import Session as SMSession
-    from holon.config import load_runtime_config
-    from holon.store import make_engine, register_agent
+    from olon.config import load_runtime_config
+    from olon.store import make_engine, register_agent
     rt = load_runtime_config()
     eng = make_engine(rt.database_url)
     with SMSession(eng) as s:

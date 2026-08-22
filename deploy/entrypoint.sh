@@ -1,12 +1,12 @@
 #!/bin/sh
-# HOLACRON API container entrypoint.
+# OLOCRON API container entrypoint.
 #
 # 1. Wait for Postgres to accept connections.
 # 2. Apply database migrations (idempotent — safe on fresh or existing DB).
 # 3. Start uvicorn (binds 0.0.0.0 so Caddy can reach it).
 set -e
 
-echo "[entrypoint] HOLACRON engage API starting..."
+echo "[entrypoint] OLOCRON engage API starting..."
 
 # ── 1. Wait for Postgres ──────────────────────────────────────────────────────
 # The compose stack has a healthcheck on the postgres service, and `depends_on:
@@ -32,8 +32,8 @@ fi
 # ── 2. Apply migrations ───────────────────────────────────────────────────────
 echo "[entrypoint] applying migrations..."
 uv run python -c "\
-from holon.config import load_runtime_config
-from holon.store import apply_migrations
+from olon.config import load_runtime_config
+from olon.store import apply_migrations
 cfg = load_runtime_config()
 apply_migrations(cfg.database_url)
 print('[entrypoint] migrations applied OK')
@@ -41,4 +41,4 @@ print('[entrypoint] migrations applied OK')
 
 # ── 3. Start uvicorn ──────────────────────────────────────────────────────────
 echo "[entrypoint] starting uvicorn on 0.0.0.0:8787..."
-exec uv run uvicorn holon.api.server:app --host 0.0.0.0 --port 8787
+exec uv run uvicorn olon.api.server:app --host 0.0.0.0 --port 8787

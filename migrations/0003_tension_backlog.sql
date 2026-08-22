@@ -1,4 +1,4 @@
--- Holon migration 0003 — tension backlog & triage (Sprint 5)
+-- Olon migration 0003 — tension backlog & triage (Sprint 5)
 -- Turns the tension table from a never-written projection into the intake
 -- backlog: status lifecycle, priority queue position, triage assessment, and a
 -- link back to the resulting decision (closes the dedup loop).

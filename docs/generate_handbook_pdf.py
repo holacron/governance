@@ -2,7 +2,7 @@
 """Generate the KIMBERIM Participant Handbook as a branded PDF.
 
 Uses ReportLab with KIMBERIM brand tokens (green #10B981, ink #0F172A).
-Output: docs/holacron-participant-handbook.pdf
+Output: docs/olocron-participant-handbook.pdf
 
 Run:  python docs/generate_handbook_pdf.py
 """
@@ -45,7 +45,7 @@ PAGE_W, PAGE_H = A4
 MARGIN = 22 * mm
 CONTENT_W = PAGE_W - 2 * MARGIN
 
-OUTPUT = Path(__file__).resolve().parent / "holacron-participant-handbook.pdf"
+OUTPUT = Path(__file__).resolve().parent / "olocron-participant-handbook.pdf"
 
 
 # ── Font registration (prefer Inter/Sora if present, else Helvetica) ──────────
@@ -232,7 +232,7 @@ def _table_stakeholders() -> Table:
 
 def _table_glossary() -> Table:
     terms = [
-        ("Holon", "A single project running on HOLACRON. KIMBERIM is a Holon."),
+        ("Olon", "A single project running on OLOCRON. KIMBERIM is a Olon."),
         ("Tension", "The felt gap between what is and what could be. The trigger for a decision."),
         ("Proposal", "A structured change drafted to resolve a tension."),
         ("Consent", "No participant has a valid objection. Not the same as unanimity."),
@@ -262,10 +262,10 @@ def build() -> Path:
         str(OUTPUT), pagesize=A4,
         leftMargin=MARGIN, rightMargin=MARGIN,
         topMargin=20 * mm, bottomMargin=18 * mm,
-        title="Participating in KIMBERIM — A HOLACRON Participant Handbook",
-        author="KIMBERIM / HOLACRON Governance Collective",
+        title="Participating in KIMBERIM — A OLOCRON Participant Handbook",
+        author="KIMBERIM / OLOCRON Governance Collective",
         subject="How to participate in KIMBERIM's consent-governed collective",
-        creator="HOLACRON",
+        creator="OLOCRON",
     )
 
     # Cover frame (full page minus margins, content sits in lower portion)
@@ -293,7 +293,7 @@ def build() -> Path:
     # Title block sits over the ink band
     title_block = [
         Paragraph(
-            '<font name="%s" color="#10B981" size="9"><b>● HOLACRON GOVERNANCE</b></font>'
+            '<font name="%s" color="#10B981" size="9"><b>● OLOCRON GOVERNANCE</b></font>'
             % BOLD, S["kicker"]
         ),
         Spacer(1, 6),
@@ -307,7 +307,7 @@ def build() -> Path:
         ),
         Spacer(1, 10),
         Paragraph(
-            '<font name="%s" color="#94A3B8" size="12">A handbook for the HOLACRON '
+            '<font name="%s" color="#94A3B8" size="12">A handbook for the OLOCRON '
             "governance collective</font>" % BODY, S["lede"]
         ),
     ]
@@ -331,30 +331,31 @@ def build() -> Path:
     from reportlab.platypus import NextPageTemplate
     story.insert(len(story) - 1, NextPageTemplate("body"))
 
-    # ── Body: What is HOLACRON ────────────────────────────────────────────────
-    story.append(_para("What is HOLACRON?", "h1"))
+    # ── Body: What is OLOCRON ────────────────────────────────────────────────
+    story.append(_para("What is OLOCRON?", "h1"))
     story.append(_para(
-        "HOLACRON is a new kind of decision-making body: a collective of AI agents "
+        "OLOCRON is a new kind of decision-making body: a collective of AI agents "
         "and humans that governs a venture together, by <b>consent</b>.", "body"))
     story.append(_para(
-        "Instead of a boardroom where a few people vote yes or no, HOLACRON runs a "
+        "Instead of a boardroom where a few people vote yes or no, OLOCRON runs a "
         "continuous, transparent process. Anyone in the collective can raise a "
         "concern. Every proposal is tested against whether it is <b>safe to "
         "try</b>. Every position is recorded to a permanent, public ledger that "
         "anyone can read.", "body"))
     story.append(_para(
-        "The word comes from <i>holacracy</i> — a system where authority is "
-        "distributed into roles rather than concentrated in a hierarchy — and "
-        "<i>cron</i> — the heartbeat that drives governance forward on a rhythm.",
+        "The name joins <i>olon</i> — a whole that is itself part of a larger "
+        "whole — with <i>cron</i>, the heartbeat that drives governance "
+        "forward on a rhythm. Authority is distributed into roles rather than "
+        "concentrated in a hierarchy.",
         "body"))
     story.append(_para(
-        "HOLACRON is the platform. Each venture that runs on it is called a "
-        "<b>Holon</b>.", "body"))
+        "OLOCRON is the platform. Each venture that runs on it is called a "
+        "<b>Olon</b>.", "body"))
 
     # ── What is KIMBERIM ──────────────────────────────────────────────────────
     story.append(_para("What is KIMBERIM?", "h2"))
     story.append(_para(
-        "KIMBERIM — the <i>Kimberley Rim Grid</i> — is the first Holon. It is a "
+        "KIMBERIM — the <i>Kimberley Rim Grid</i> — is the first Olon. It is a "
         "proposed <b>1 gigawatt green-compute campus</b> in the East Kimberley "
         "region of Western Australia, powered by solar-updraft-tower technology.",
         "body"))
@@ -371,7 +372,7 @@ def build() -> Path:
     story.append(_para(
         "That is not a question one person should answer. It touches energy "
         "economics, First Nations sovereignty, environmental impact, regional "
-        "development, and inter-generational ethics. So it goes to a Holon.",
+        "development, and inter-generational ethics. So it goes to a Olon.",
         "body"))
 
     # ── How consent governance works ──────────────────────────────────────────
@@ -529,8 +530,8 @@ def build() -> Path:
          "This is governance as a design tool — proving the collective can decide "
          "before the venture exists."),
         ("Who founded it?",
-         "Adrian, the principal, who holds the founder role and the veto. HOLACRON "
-         "itself is an open platform; anyone can spin up a Holon."),
+         "Adrian, the principal, who holds the founder role and the veto. OLOCRON "
+         "itself is an open platform; anyone can spin up a Olon."),
         ("Can I leave?",
          "Yes. You can stop participating at any time. Your past contributions "
          "remain in the ledger (the record is permanent), but no future cycles will "
@@ -552,7 +553,7 @@ def build() -> Path:
 
     story.append(Spacer(1, 16))
     story.append(Paragraph(
-        '<font name="%s" color="#94A3B8" size="9">KIMBERIM · HOLACRON Governance '
+        '<font name="%s" color="#94A3B8" size="9">KIMBERIM · OLOCRON Governance '
         "Collective · kimberim.com</font>" % BODY, S["footer"]))
 
     doc.build(story)

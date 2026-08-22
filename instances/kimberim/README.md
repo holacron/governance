@@ -1,11 +1,11 @@
-# Holon — KIMBERIM
+# Olon — KIMBERIM
 
-> The first [Holon](../..) of the [HOLACRON](../..) platform — for the
+> The first [Olon](../..) of the [OLOCRON](../..) platform — for the
 > [**Kimberley Rim Grid**](https://kimberim.com), a conceptual 1 GW
 > solar-updraft-tower green-compute campus for the East Kimberley, Western
 > Australia.
 
-This directory holds the **Holon config** that makes the generic HOLACRON engine
+This directory holds the **Olon config** that makes the generic OLOCRON engine
 specific to KIMBERIM: branding, stakeholder & domain taxonomy presets, founder
 identity, initial decision backlog, and domain circles. The engine itself lives
 in the repo root.

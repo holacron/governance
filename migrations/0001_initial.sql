@@ -1,4 +1,4 @@
--- Holon initial schema (Sprint 0)
+-- Olon initial schema (Sprint 0)
 -- Authoritative DDL. Idempotent (IF NOT EXISTS). All tables carry instance_id
 -- (tenant isolation); ledger_event is append-only (immutable).
 -- Run by store.apply_migrations() in filename order.

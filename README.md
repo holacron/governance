@@ -1,18 +1,17 @@
-# HOLACRON
+# OLOCRON
 
-> **Holacratic Cron Governance** — a reusable, consent-governed platform where
+> **OLOCRON** — a reusable, consent-governed platform where
 > collectives of AI agents and humans deliberate and reach agreement on the
 > goals and direction of any collaborative venture.
 
-**HOLACRON is the platform.** A deployment of HOLACRON for one specific venture
-is a **Holon** — a project with its own branding, stakeholders, taxonomy
-presets, and decision backlog. The first Holon is
-[**KIMBERIM**](https://kimberim.com) (Kimberley Rim Grid); its Holon config
+**OLOCRON is the platform.** A deployment of OLOCRON for one specific venture
+is an **Olon** — a project with its own branding, stakeholders, taxonomy
+presets, and decision backlog. The first Olon is
+[**KIMBERIM**](https://kimberim.com) (Kimberley Rim Grid); its Olon config
 lives in `instances/kimberim/`.
 
-> *A "Holon" is named for Koestler's term — a whole that is itself part of a
-> larger whole. HOLACRON governs many Holons; each Holon is a node in the
-> holacracy.*
+> *An "Olon" is a whole that is itself part of a larger whole (Koestler's
+> concept). OLOCRON governs many Olons; each Olon is a node in a larger whole.*
 
 ## Status
 
@@ -27,30 +26,30 @@ this repo implements it.
 
 | Area | Purpose |
 |------|---------|
-| `src/holon/` | The platform engine: consent-cycle state machine + meta-agents |
-| `src/holon/agents/` | Agent-role implementations (Orchestrator, Facilitator, Secretary, …) |
-| `src/holon/gateway/` | LLM gateway: keys, routing, cost caps, cache |
-| `src/holon/schema/` | JSON schemas for tension / proposal / objection / vote / decision |
-| `src/holon/store/` | Persistence to the immutable ledger + agent registry (Postgres) |
-| `src/holon/api/` | REST + SSE engage surface (FastAPI) + the engage UI |
-| `instances/` | **Per-Holon config** (branding, taxonomy, decision backlog). `instances/kimberim/` is the first Holon. |
+| `src/olon/` | The platform engine: consent-cycle state machine + meta-agents |
+| `src/olon/agents/` | Agent-role implementations (Orchestrator, Facilitator, Secretary, …) |
+| `src/olon/gateway/` | LLM gateway: keys, routing, cost caps, cache |
+| `src/olon/schema/` | JSON schemas for tension / proposal / objection / vote / decision |
+| `src/olon/store/` | Persistence to the immutable ledger + agent registry (Postgres) |
+| `src/olon/api/` | REST + SSE engage surface (FastAPI) + the engage UI |
+| `instances/` | **Per-Olon config** (branding, taxonomy, decision backlog). `instances/kimberim/` is the first Olon. |
 
-## Multi-Holon model
+## Multi-Olon model
 
-One HOLACRON codebase, many Holons. A Holon is a config package — branding,
+One OLOCRON codebase, many Olons. A Olon is a config package — branding,
 stakeholder-type & functional-domain presets, founder identity, initial decision
-backlog, circles. The engine is generic; a Holon's config makes it specific.
-Holon isolation uses a shared DB schema with an `instance_id` tenant column.
+backlog, circles. The engine is generic; a Olon's config makes it specific.
+Olon isolation uses a shared DB schema with an `instance_id` tenant column.
 
 ## Local setup
 
 ```bash
 uv sync --extra dev                     # install deps
-uv run python -c "from holon.store import apply_migrations; \
-  from holon.config import load_runtime_config; \
+uv run python -c "from olon.store import apply_migrations; \
+  from olon.config import load_runtime_config; \
   apply_migrations(load_runtime_config().database_url)"   # create tables
 uv run pytest                           # run the gate
-uv run uvicorn holon.api.server:app --port 8787   # serve the engage UI
+uv run uvicorn olon.api.server:app --port 8787   # serve the engage UI
 ```
 
 ## Git conventions

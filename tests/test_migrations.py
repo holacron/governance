@@ -21,7 +21,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 
-from holon.store import apply_migrations, make_engine
+from olon.store import apply_migrations, make_engine
 
 load_dotenv()
 
@@ -77,7 +77,7 @@ def test_apply_migrations_creates_full_schema_on_fresh_db():
     Uses a throwaway database so the dev DB is never modified.
     """
     db_url = os.environ["DATABASE_URL"]
-    dbname = f"holon_migtest_{uuid.uuid4().hex[:8]}"
+    dbname = f"olon_migtest_{uuid.uuid4().hex[:8]}"
     throwaway = _throwaway_url(db_url, dbname)
 
     # Create the throwaway DB via the maintenance connection (autocommit mode —
@@ -148,7 +148,7 @@ def test_apply_migrations_is_idempotent():
     """Running apply_migrations twice is a no-op (idempotent: IF NOT EXISTS /
     ADD COLUMN IF NOT EXISTS). This is what lets it upgrade an existing DB."""
     db_url = os.environ["DATABASE_URL"]
-    dbname = f"holon_migtest_{uuid.uuid4().hex[:8]}"
+    dbname = f"olon_migtest_{uuid.uuid4().hex[:8]}"
     throwaway = _throwaway_url(db_url, dbname)
 
     maint = _autocommit_engine(_maintenance_url(db_url))

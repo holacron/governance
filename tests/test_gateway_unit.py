@@ -24,12 +24,12 @@ from anthropic import (
     RateLimitError,
 )
 
-from holon.config import RuntimeConfig
-from holon.gateway import CostCapExceeded, LLMGateway
+from olon.config import RuntimeConfig
+from olon.gateway import CostCapExceeded, LLMGateway
 
 # tenacity's waits would make this test sleep 2s + 4s between retries. Patch the
 # retry's sleep so the retry path executes instantly but still retries 3x.
-import holon.gateway as gw_mod
+import olon.gateway as gw_mod
 
 
 @pytest.fixture(autouse=True)

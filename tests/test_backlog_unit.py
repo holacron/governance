@@ -18,7 +18,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 
-from holon.store import (
+from olon.store import (
     apply_migrations,
     get_tension,
     list_backlog,
@@ -32,7 +32,7 @@ from holon.store import (
     get_agent,
     triage_tension,
 )
-from holon.store import DecisionRow, ProposalRow
+from olon.store import DecisionRow, ProposalRow
 from sqlmodel import Session as SMSession
 
 load_dotenv()
@@ -62,7 +62,7 @@ def db_session():
     Cleans up the throwaway DB after the test (even on failure).
     """
     db_url = os.environ["DATABASE_URL"]
-    dbname = f"holon_bklog_{uuid.uuid4().hex[:8]}"
+    dbname = f"olon_bklog_{uuid.uuid4().hex[:8]}"
     throwaway = _throwaway_url(db_url, dbname)
 
     maint = _autocommit_engine(_maintenance_url(db_url))
@@ -307,7 +307,7 @@ def test_register_agent_with_abac_cell_stores_permissions(db_session):
     """Registering an agent with a stakeholder_type stores the resolved
     permissions (JSON) + the taxonomy cell on the row."""
     s = db_session
-    from holon.config import resolve_cell, load_instance_config
+    from olon.config import resolve_cell, load_instance_config
     ic = load_instance_config("kimberim")
     perms, weight = resolve_cell(ic.abac, "founder", None)
     row = register_agent(

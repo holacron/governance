@@ -1,9 +1,9 @@
-# Holon config — KIMBERIM (the first Holon of HOLACRON)
+# Olon config — KIMBERIM (the first Olon of OLOCRON)
 #
-# One HOLACRON codebase, many Holons. A Holon is a config package:
+# One OLOCRON codebase, many Olons. A Olon is a config package:
 # branding, stakeholder/domain taxonomy presets, founder identity, initial
 # decision backlog, circles. The engine is generic; this file makes it specific.
-# Validated against src/holon/config/__init__.py:InstanceConfig.
+# Validated against src/olon/config/__init__.py:InstanceConfig.
 
 instance_id: kimberim
 display_name: KIMBERIM

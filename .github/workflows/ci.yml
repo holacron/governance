@@ -33,7 +33,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Type sanity (ruff compile-equivalent via import)
-        run: uv run python -c "import holon; print('import ok')"
+        run: uv run python -c "import olon; print('import ok')"
 
       - name: Test (pytest)
         run: uv run pytest -q

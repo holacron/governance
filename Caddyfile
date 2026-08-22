@@ -1,4 +1,4 @@
-# Caddy reverse proxy for the HOLACRON engage API.
+# Caddy reverse proxy for the OLOCRON engage API.
 #
 # Caddy automatically provisions and renews a Let's Encrypt TLS certificate
 # for api.kimberim.com (requires the DNS A-record to point at this server
@@ -44,5 +44,5 @@ api.kimberim.com {
 
 # Optional: a catch-all that redirects bare HTTP to HTTPS.
 :80 {
-	respond "HOLACRON engage API. See https://api.kimberim.com/health" 200
+	respond "OLOCRON engage API. See https://api.kimberim.com/health" 200
 }

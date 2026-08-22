@@ -1,8 +1,8 @@
-# HOLACRON engage API — full production stack.
+# OLOCRON engage API — full production stack.
 #
 # Three services:
 #   postgres  — PostgreSQL 17 with a persistent volume.
-#   api       — the HOLACRON FastAPI app (builds from ./Dockerfile).
+#   api       — the OLOCRON FastAPI app (builds from ./Dockerfile).
 #   caddy     — reverse proxy with automatic HTTPS (Let's Encrypt) for
 #               api.kimberim.com, terminating TLS and forwarding to api:8787.
 #
@@ -13,15 +13,15 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: holacron-postgres
+    container_name: olocron-postgres
     environment:
-      POSTGRES_DB: holon
-      POSTGRES_USER: holon
+      POSTGRES_DB: olon
+      POSTGRES_USER: olon
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U holon -d holon"]
+      test: ["CMD-SHELL", "pg_isready -U olon -d olon"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -33,11 +33,11 @@ services:
 
   api:
     build: .
-    container_name: holacron-api
+    container_name: olocron-api
     environment:
       # The app loads these from the environment (dotenv override=False,
       # so container env wins). See deploy/.env.production.example.
-      DATABASE_URL: postgresql://holon:${POSTGRES_PASSWORD}@postgres:5432/holon
+      DATABASE_URL: postgresql://olon:${POSTGRES_PASSWORD}@postgres:5432/olon
       ZAI_API_KEY: ${ZAI_API_KEY:?set ZAI_API_KEY in .env}
       ZAI_BASE_URL: ${ZAI_BASE_URL:-https://api.z.ai/api/anthropic}
       HARNESS_MODELS: ${HARNESS_MODELS:-GLM-5-Turbo}
@@ -50,7 +50,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: holacron-caddy
+    container_name: olocron-caddy
     ports:
       - "80:80"
       - "443:443"

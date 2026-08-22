@@ -9,10 +9,10 @@ These are the per-transition unit tests the S1 plan requires.
 
 from __future__ import annotations
 
-from holon.agents import StubAgent
-from holon.config import GovernanceConfig
-from holon.cycle import CycleRun, run_cycle
-from holon.schema import AgentRole, Tension
+from olon.agents import StubAgent
+from olon.config import GovernanceConfig
+from olon.cycle import CycleRun, run_cycle
+from olon.schema import AgentRole, Tension
 
 INSTANCE = "kimberim"
 
@@ -187,7 +187,7 @@ class _SlowAgent:
     external agent. Conforms to the Agent Protocol (has .ref + .respond)."""
 
     def __init__(self, delay: float, *, display_name: str = "slow"):
-        from holon.schema import AgentRef
+        from olon.schema import AgentRef
         self.ref = AgentRef(instance_id=INSTANCE, display_name=display_name, weight=1.0)
         self._delay = delay
 
@@ -201,7 +201,7 @@ class _ErrorAgent:
     """An agent that raises, simulating a provider/endpoint failure."""
 
     def __init__(self, *, display_name: str = "error"):
-        from holon.schema import AgentRef
+        from olon.schema import AgentRef
         self.ref = AgentRef(instance_id=INSTANCE, display_name=display_name, weight=1.0)
 
     def respond(self, prompt: str, context: str = "", **kwargs) -> str:

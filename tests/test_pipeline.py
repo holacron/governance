@@ -21,10 +21,10 @@ import pytest
 from dotenv import load_dotenv
 from sqlmodel import Session as SMSession
 
-from holon.config import load_instance_config, load_runtime_config
-from holon.gateway import LLMGateway
-from holon.schema import AgentRef, AgentRole, Proposal, Tension
-from holon.store import append_ledger_event, make_engine
+from olon.config import load_instance_config, load_runtime_config
+from olon.gateway import LLMGateway
+from olon.schema import AgentRef, AgentRole, Proposal, Tension
+from olon.store import append_ledger_event, make_engine
 
 # Load .env at import time so the live-test skip check can see credentials.
 load_dotenv()

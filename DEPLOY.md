@@ -1,4 +1,4 @@
-# Deploying the HOLACRON API to production
+# Deploying the OLOCRON API to production
 
 This guide takes you from a fresh Linux server to a live API at
 `https://api.kimberim.com`, with automatic HTTPS and a managed Postgres — all
@@ -60,14 +60,14 @@ Clone the repo (or pull if you've done this before):
 
 ```bash
 cd /opt
-git clone https://github.com/holacron/governance.git holacron
-cd holacron
+git clone https://github.com/olocron/governance.git olocron
+cd olocron
 ```
 
 > If the repo is private, you'll need a deploy key or personal access token.
 > Alternatively, from your local machine:
 > ```bash
-> scp -r /c/Users/Administrator/ZCodeProject/holon root@YOUR.SERVER.IP:/opt/holacron
+> scp -r /c/Users/Administrator/ZCodeProject/olon root@YOUR.SERVER.IP:/opt/olocron
 > ```
 
 ---
@@ -77,7 +77,7 @@ cd holacron
 Create the `.env` file from the template and fill in two secrets:
 
 ```bash
-cd /opt/holacron
+cd /opt/olocron
 cp deploy/.env.production.example .env
 nano .env    # or vi, or your preferred editor
 ```
@@ -142,7 +142,7 @@ For cloud providers (DigitalOcean, Hetzner Cloud, AWS), also check the
 ## Step 6 — Launch the stack
 
 ```bash
-cd /opt/holacron
+cd /opt/olocron
 docker compose up -d --build
 ```
 
@@ -160,7 +160,7 @@ docker compose logs -f api
 
 You should see:
 ```
-[entrypoint] HOLACRON engage API starting...
+[entrypoint] OLOCRON engage API starting...
 [entrypoint] database reachable at postgres:5432
 [entrypoint] applying migrations...
 [entrypoint] migrations applied OK
@@ -209,7 +209,7 @@ already pointed at `https://api.kimberim.com`.
 ### Update to a new version
 
 ```bash
-cd /opt/holacron
+cd /opt/olocron
 git pull origin main
 docker compose up -d --build
 ```
@@ -239,13 +239,13 @@ docker compose restart api
 ### Database backup
 
 ```bash
-docker compose exec postgres pg_dump -U holon holon > backup_$(date +%F).sql
+docker compose exec postgres pg_dump -U olon olon > backup_$(date +%F).sql
 ```
 
 ### Restore
 
 ```bash
-cat backup_2026-01-15.sql | docker compose exec -T postgres psql -U holon holon
+cat backup_2026-01-15.sql | docker compose exec -T postgres psql -U olon olon
 ```
 
 ### Tear down (keeps data)

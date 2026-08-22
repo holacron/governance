@@ -6,10 +6,10 @@ green (back-compat: empty participant_agents -> DA-only S2 behaviour).
 
 from __future__ import annotations
 
-from holon.agents import StubAgent
-from holon.config import GovernanceConfig
-from holon.cycle import CycleRun, run_cycle
-from holon.schema import AgentRole, Tension
+from olon.agents import StubAgent
+from olon.config import GovernanceConfig
+from olon.cycle import CycleRun, run_cycle
+from olon.schema import AgentRole, Tension
 
 INSTANCE = "kimberim"
 

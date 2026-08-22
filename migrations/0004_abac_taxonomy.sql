@@ -1,4 +1,4 @@
--- Holon migration 0004 — ABAC taxonomy columns on agent_registry (Sprint 6)
+-- Olon migration 0004 — ABAC taxonomy columns on agent_registry (Sprint 6)
 -- Adds the stakeholder-type × functional-domain cell + resolved permissions so
 -- the ABAC matrix (resolve_cell) is resolved once at registration and stored on
 -- the row. NULLable + defaulted to preserve every pre-S6 registration.

@@ -18,9 +18,9 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlmodel import Session as SMSession
 
-from holon.agents import StubAgent
-from holon.schema import AgentRole
-from holon.store import (
+from olon.agents import StubAgent
+from olon.schema import AgentRole
+from olon.store import (
     apply_migrations,
     get_tension,
     list_backlog,
@@ -29,7 +29,7 @@ from holon.store import (
     register_agent,
     triage_tension,
 )
-from holon.utils import extract_json
+from olon.utils import extract_json
 
 load_dotenv()
 
@@ -54,7 +54,7 @@ def _autocommit_engine(database_url: str):
 @pytest.fixture
 def db_session():
     db_url = os.environ["DATABASE_URL"]
-    dbname = f"holon_triage_{uuid.uuid4().hex[:8]}"
+    dbname = f"olon_triage_{uuid.uuid4().hex[:8]}"
     throwaway = _throwaway_url(db_url, dbname)
 
     maint = _autocommit_engine(_maintenance_url(db_url))

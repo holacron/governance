@@ -1,4 +1,4 @@
-# ADR 0001 — The Holacratic Consent Cycle as a State Machine
+# ADR 0001 — The OLOCRON Consent Cycle as a State Machine
 
 - **Status:** Accepted (Sprint 0)
 - **Date:** 2026-08-02
@@ -7,7 +7,7 @@
 
 ## Context
 
-HOLACRON's central artefact is a decision-making protocol — the holacratic consent
+OLOCRON's central artefact is a decision-making protocol — the OLOCRON consent
 cycle. Every decision the platform makes (and, via the bootstrap runner in §11,
 every decision about *building* the platform) flows through it. We need a precise,
 machine-checkable definition of its states and transitions before Sprint 1
@@ -32,7 +32,7 @@ The governance rules it must encode (from ROADMAP §2):
 Model the cycle as an **explicit finite-state machine** (FSM), implemented in
 Sprint 1 on **LangGraph** (LangGraph is purpose-built for stateful agent graphs;
 the consent cycle is exactly such a graph). The canonical states are the
-`ConsentState` StrEnum in `src/holon/schema/__init__.py`.
+`ConsentState` StrEnum in `src/olon/schema/__init__.py`.
 
 ### States
 
@@ -93,7 +93,7 @@ tunable per instance without code changes.
   distinct transition guards, so they can never be conflated — matching the
   hard rule in §2.2 that they stay separate in data, UI, and ledger.
 - **Negative:** a strict FSM is less flexible than free-form agent chat; some
-  emergent holacratic behaviours may need adding states later. Mitigation: the
+  emergent consent-governed behaviours may need adding states later. Mitigation: the
   schema's `event_type` enum and `LedgerEvent` are open to extension; new states
   are additive.
 - **Risk:** the budget→escalation path means a contentious proposal can be

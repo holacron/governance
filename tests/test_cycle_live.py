@@ -17,7 +17,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlmodel import Session as SMSession
 
-from holon.agents import (
+from olon.agents import (
     DevilsAdvocate,
     Founder,
     IntegrativeMediator,
@@ -26,10 +26,10 @@ from holon.agents import (
     ProposalArchitect,
     Summarizer,
 )
-from holon.config import load_instance_config, load_runtime_config
-from holon.cycle import CycleRun, run_cycle
-from holon.schema import AgentRole, Tension
-from holon.store import append_ledger_event, make_engine
+from olon.config import load_instance_config, load_runtime_config
+from olon.cycle import CycleRun, run_cycle
+from olon.schema import AgentRole, Tension
+from olon.store import append_ledger_event, make_engine
 
 load_dotenv()
 
@@ -179,7 +179,7 @@ def _participant(display_name: str, perspective: str) -> MetaAgent:
     class _P(MetaAgent):
         role = AgentRole.PARTICIPANT
         system_prompt = (
-            f"You are a participant in Holon's holacratic consent cycle, "
+            f"You are a participant in Olon's OLOCRON consent cycle, "
             f"representing this stakeholder perspective: {perspective}. "
             "State your honest position on each proposal — consent, object (with a "
             "valid criterion + reason), or abstain. Be constructive. Respond as JSON: "

@@ -17,9 +17,9 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlmodel import Session as SMSession
 
-from holon.api.scheduler import _fire_epoch, _scheduled_instances
-from holon.config import load_runtime_config
-from holon.store import (
+from olon.api.scheduler import _fire_epoch, _scheduled_instances
+from olon.config import load_runtime_config
+from olon.store import (
     apply_migrations,
     list_epochs,
     make_engine,
@@ -52,7 +52,7 @@ def _autocommit_engine(database_url: str):
 @pytest.fixture
 def db_session():
     db_url = os.environ["DATABASE_URL"]
-    dbname = f"holon_sched_{uuid.uuid4().hex[:8]}"
+    dbname = f"olon_sched_{uuid.uuid4().hex[:8]}"
     throwaway = _throwaway_url(db_url, dbname)
 
     maint = _autocommit_engine(_maintenance_url(db_url))
@@ -121,7 +121,7 @@ def test_fire_epoch_skips_when_backlog_empty(db_session):
 
     # _fire_epoch loads its own config + uses the passed engine; the throwaway
     # DB has no kimberim tensions, so it should skip without firing.
-    from holon.config import load_runtime_config
+    from olon.config import load_runtime_config
     broker = _FakeBroker()
     try:
         _fire_epoch("kimberim", broker, eng, load_runtime_config(), asyncio.new_event_loop())
@@ -155,7 +155,7 @@ def test_fire_epoch_skips_when_one_already_running(db_session):
     s.commit()
 
     eng = s.get_bind()
-    from holon.config import load_runtime_config
+    from olon.config import load_runtime_config
     broker = _FakeBroker()
     try:
         _fire_epoch("kimberim", broker, eng, load_runtime_config(), asyncio.new_event_loop())
@@ -175,7 +175,7 @@ def test_scheduler_loop_can_be_started_and_cancelled():
     assert it fires (that needs a non-manual instance + real timing); we assert
     it's a well-behaved async task that responds to cancellation."""
     from types import SimpleNamespace
-    from holon.api.scheduler import epoch_scheduler
+    from olon.api.scheduler import epoch_scheduler
 
     app = SimpleNamespace(state=SimpleNamespace(broker=_FakeBroker()))
 

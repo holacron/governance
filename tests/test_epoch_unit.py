@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlmodel import Session as SMSession
 
-from holon.store import (
+from olon.store import (
     apply_migrations,
     close_epoch,
     current_epoch,
@@ -53,7 +53,7 @@ def _autocommit_engine(database_url: str):
 @pytest.fixture
 def db_session():
     db_url = os.environ["DATABASE_URL"]
-    dbname = f"holon_epoch_{uuid.uuid4().hex[:8]}"
+    dbname = f"olon_epoch_{uuid.uuid4().hex[:8]}"
     throwaway = _throwaway_url(db_url, dbname)
 
     maint = _autocommit_engine(_maintenance_url(db_url))

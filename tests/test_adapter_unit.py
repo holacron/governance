@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from holon.agents.adapter import (
+from olon.agents.adapter import (
     AgentAdapter,
     ProviderAdapter,
     _auto_detect_kind,
@@ -21,8 +21,8 @@ from holon.agents.adapter import (
     _is_provider_endpoint,
     make_adapter,
 )
-from holon.gateway import LLMGateway
-from holon.schema import AgentRef, AgentRole
+from olon.gateway import LLMGateway
+from olon.schema import AgentRef, AgentRole
 
 
 def _row(**kw):
@@ -182,7 +182,7 @@ def test_endpoint_adapter_posts_and_parses_text():
         return httpx.Response(200, json={"text": '{"position": "objection"}'})
 
     ref = AgentRef(instance_id="kimberim", display_name="Self-Hosted", weight=1.0)
-    from holon.agents.endpoint import EndpointAdapter
+    from olon.agents.endpoint import EndpointAdapter
     adapter = EndpointAdapter(
         ref=ref, system_prompt="you are a voter",
         endpoint="https://agents.example.com/infer", client=_mock_client(handler),
@@ -203,7 +203,7 @@ def test_endpoint_adapter_accepts_response_key_alias():
         return httpx.Response(200, json={"response": '{"position": "consent"}'})
 
     ref = AgentRef(instance_id="kimberim", display_name="Self-Hosted")
-    from holon.agents.endpoint import EndpointAdapter
+    from olon.agents.endpoint import EndpointAdapter
     adapter = EndpointAdapter(
         ref=ref, system_prompt="x",
         endpoint="https://agents.example.com/infer", client=_mock_client(handler),
@@ -220,7 +220,7 @@ def test_endpoint_adapter_raises_on_non_200():
         return httpx.Response(500, json={"error": "agent down"})
 
     ref = AgentRef(instance_id="kimberim", display_name="Self-Hosted")
-    from holon.agents.endpoint import EndpointAdapter
+    from olon.agents.endpoint import EndpointAdapter
     adapter = EndpointAdapter(
         ref=ref, system_prompt="x",
         endpoint="https://agents.example.com/infer", client=_mock_client(handler),
@@ -234,7 +234,7 @@ def test_endpoint_adapter_raises_on_non_200():
 
 def test_rate_limiter_blocks_call_within_window():
     """A RateLimiter at 1 call/60s allows the first call, blocks the second."""
-    from holon.agents.adapter import RateLimiter, RateLimitExceeded
+    from olon.agents.adapter import RateLimiter, RateLimitExceeded
     rl = RateLimiter(max_calls=1, window_s=60.0)
     rl.acquire()  # first call OK
     with pytest.raises(RateLimitExceeded):
@@ -243,7 +243,7 @@ def test_rate_limiter_blocks_call_within_window():
 
 def test_rate_limiter_allows_after_refill():
     """After enough time elapses, the bucket refills and a call succeeds."""
-    from holon.agents.adapter import RateLimiter
+    from olon.agents.adapter import RateLimiter
     rl = RateLimiter(max_calls=1, window_s=0.05)  # 50ms window
     rl.acquire()
     import time
@@ -253,7 +253,7 @@ def test_rate_limiter_allows_after_refill():
 
 def test_provider_adapter_enforces_rate_limit():
     """A ProviderAdapter with a tight rate limiter blocks the 2nd call."""
-    from holon.agents.adapter import ProviderAdapter, RateLimiter, RateLimitExceeded
+    from olon.agents.adapter import ProviderAdapter, RateLimiter, RateLimitExceeded
     mock_gw = MagicMock(spec=LLMGateway)
     mock_gw.call_agent.return_value = SimpleNamespace(
         text="ok", model="gpt-4o", input_tokens=1, output_tokens=1,

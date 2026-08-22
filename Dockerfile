@@ -1,10 +1,10 @@
-# HOLACRON engage API — production image.
+# OLOCRON engage API — production image.
 #
 # Runs from source (not a wheel) because the app resolves instances/,
 # migrations/, and docs/ relative to the repo root via __file__ parents.
-# Layout inside the container: /app/src/holon/...  →  REPO_ROOT = /app.
+# Layout inside the container: /app/src/olon/...  →  REPO_ROOT = /app.
 #
-# Build:  docker compose build     (or:  docker build -t holacron-api .)
+# Build:  docker compose build     (or:  docker build -t olocron-api .)
 
 FROM python:3.12-slim AS base
 

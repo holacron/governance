@@ -19,7 +19,7 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-from holon.api.server import create_app
+from olon.api.server import create_app
 
 load_dotenv()
 
