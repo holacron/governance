@@ -6,19 +6,9 @@
 #
 # No manual cert management needed — this is the whole HTTPS config.
 
-api.kimberim.com {
-	# Proxy all requests to the FastAPI app inside the compose network.
-	reverse_proxy api:8787
-
-	# SSE support: the /deliberations/{run_id}/events stream holds
-	# connections open for the duration of a consent cycle. Disable
-	# buffering and set a long timeout so Caddy doesn't kill the stream.
-	encode {
-		# Don't gzip SSE (it would buffer the event stream).
-		exclude /deliberations/*
-	}
-
-	# Generous timeouts for long deliberation streams (up to ~30 min).
+{
+	# Global server options: generous timeouts for long SSE deliberation
+	# streams (up to ~30 min) and slow clients.
 	servers {
 		timeouts {
 			read_body 30s
@@ -26,6 +16,15 @@ api.kimberim.com {
 			write 0s
 			idle 30m
 		}
+	}
+}
+
+api.kimberim.com {
+	# Stream immediately (flush_interval -1) — SSE deliberation events on
+	# /deliberations/{run_id}/events must reach the client unbuffered.
+	# No `encode` (compression): gzip would buffer event streams.
+	reverse_proxy api:8787 {
+		flush_interval -1
 	}
 
 	# Security headers.
@@ -40,9 +39,4 @@ api.kimberim.com {
 		output stdout
 		format console
 	}
-}
-
-# Optional: a catch-all that redirects bare HTTP to HTTPS.
-:80 {
-	respond "OLOCRON engage API. See https://api.kimberim.com/health" 200
 }
